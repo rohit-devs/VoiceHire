@@ -1,0 +1,190 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String                 @id @default(cuid())
+  email               String                 @unique
+  clerkId             String                 @unique @map("clerk_id")
+  firstName           String?                @map("first_name")
+  lastName            String?                @map("last_name")
+  avatarUrl           String?                @map("avatar_url")
+  candidateProfiles   CandidateProfile[]
+  interviewSessions   InterviewSession[]
+  coachingPlans       CoachingPlan[]
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model CandidateProfile {
+  id                  String                 @id @default(cuid())
+  userId              String                 @map("user_id")
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetRole          String                 @map("target_role")
+  experienceLevel     String?                @map("experience_level")
+  skills              String[]
+  parsedResumeJson    Json?                  @map("parsed_resume_json")
+  resumeFileUrl       String?                @map("resume_file_url")
+  interviewSessions   InterviewSession[]
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@map("candidate_profiles")
+}
+
+model JobDescription {
+  id                  String                 @id @default(cuid())
+  roleTitle           String                 @map("role_title")
+  companyName         String?                @map("company_name")
+  competencies        String[]
+  descriptionText     String                 @map("description_text")
+  metadata            Json?
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@map("job_descriptions")
+}
+
+model InterviewSession {
+  id                  String                 @id @default(cuid())
+  userId              String                 @map("user_id")
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidateProfileId  String?                @map("candidate_profile_id")
+  candidateProfile    CandidateProfile?      @relation(fields: [candidateProfileId], references: [id], onDelete: SetNull)
+  role                String
+  difficulty         String                 @default("medium")
+  agoraChannel        String                 @unique @map("agora_channel")
+  agoraChannelUid     Int?                   @map("agora_channel_uid")
+  status              String                 @default("scheduled")
+  currentState        String                 @default("intro") @map("current_state")
+  persona             String                 @default("technical")
+  startedAt           DateTime?              @map("started_at")
+  endedAt             DateTime?              @map("ended_at")
+  durationSeconds     Int?                   @map("duration_seconds")
+  interviewBlueprint  Json?                  @map("interview_blueprint")
+  metadata            Json?
+  transcripts         Transcript[]
+  evaluationReport    EvaluationReport?
+  interviewAnalytics  InterviewAnalytics?
+  sessionStateSnapshots SessionStateSnapshot[]
+  agoraEventsLog      AgoraEventsLog[]
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@map("interview_sessions")
+}
+
+model Transcript {
+  id                  String                 @id @default(cuid())
+  sessionId           String                 @map("session_id")
+  session             InterviewSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  speaker             String
+  message             String
+  fillerWordCount     Int                    @default(0) @map("filler_word_count")
+  fillerWords         String[]               @map("filler_words")
+  wordsPerMinute      Int?                   @map("words_per_minute")
+  pauseDurationMs     Int?                   @map("pause_duration_ms")
+  confidenceScore     Float?                 @map("confidence_score")
+  clarityScore        Float?                 @map("clarity_score")
+  relevanceScore      Float?                 @map("relevance_score")
+  timestampMs         Int?                   @map("timestamp_ms")
+  createdAt           DateTime               @default(now()) @map("created_at")
+
+  @@map("transcripts")
+}
+
+model EvaluationReport {
+  id                  String                 @id @default(cuid())
+  sessionId           String                 @unique @map("session_id")
+  session             InterviewSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  overallScore        Int                    @map("overall_score")
+  technicalScore      Int                    @map("technical_score")
+  communicationScore  Int                    @map("communication_score")
+  confidenceScore     Int                    @map("confidence_score")
+  clarityScore        Int                    @map("clarity_score")
+  relevanceScore      Int                    @map("relevance_score")
+  problemSolvingScore Int                    @map("problem_solving_score")
+  communicationFingerprint Json?             @map("communication_fingerprint")
+  sevenDayCoachingPlan Json                  @map("seven_day_coaching_plan")
+  topWeakness         String?                @map("top_weakness")
+  topStrength         String?                @map("top_strength")
+  recommendation      String?
+  detailedFeedback    Json?                  @map("detailed_feedback")
+  coachingPlans       CoachingPlan[]
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@map("evaluation_reports")
+}
+
+model InterviewAnalytics {
+  id                  String                 @id @default(cuid())
+  sessionId           String                 @unique @map("session_id")
+  session             InterviewSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  avgWordsPerMinute   Int?                   @map("avg_words_per_minute")
+  avgPauseDurationMs  Int?                   @map("avg_pause_duration_ms")
+  totalFillerWords    Int                    @map("total_filler_words")
+  fillerWordFrequency Json?                  @map("filler_word_frequency")
+  technicalAccuracyPercentage Float?         @map("technical_accuracy_percentage")
+  answerRelevancePercentage Float?           @map("answer_relevance_percentage")
+  interruptionCount   Int                    @map("interruption_count")
+  stateTransitions    Json?                  @map("state_transitions")
+  difficultyAdjustments Int                  @map("difficulty_adjustments")
+  createdAt           DateTime               @default(now()) @map("created_at")
+
+  @@map("interview_analytics")
+}
+
+model SessionStateSnapshot {
+  id                  String                 @id @default(cuid())
+  sessionId           String                 @map("session_id")
+  session             InterviewSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  state               String
+  timestampMs         Int                    @map("timestamp_ms")
+  candidateResponseData Json?                @map("candidate_response_data")
+  aiEvaluationData    Json?                  @map("ai_evaluation_data")
+  metricsSnapshot     Json?                  @map("metrics_snapshot")
+  createdAt           DateTime               @default(now()) @map("created_at")
+
+  @@map("session_state_snapshots")
+}
+
+model AgoraEventsLog {
+  id                  String                 @id @default(cuid())
+  sessionId           String?                @map("session_id")
+  session             InterviewSession?      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  eventType           String                 @map("event_type")
+  eventData           Json?                  @map("event_data")
+  userUid             Int?                   @map("user_uid")
+  timestampMs         Int?                   @map("timestamp_ms")
+  createdAt           DateTime               @default(now()) @map("created_at")
+
+  @@map("agora_events_log")
+}
+
+model CoachingPlan {
+  id                  String                 @id @default(cuid())
+  userId              String                 @map("user_id")
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evaluationReportId  String?                @map("evaluation_report_id")
+  evaluationReport    EvaluationReport?      @relation(fields: [evaluationReportId], references: [id], onDelete: SetNull)
+  planData            Json                   @map("plan_data")
+  startDate           DateTime               @map("start_date") @db.Date
+  endDate             DateTime               @map("end_date") @db.Date
+  completedDays       Int                    @default(0) @map("completed_days")
+  progressNotes       Json?                  @map("progress_notes")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@map("coaching_plans")
+}
