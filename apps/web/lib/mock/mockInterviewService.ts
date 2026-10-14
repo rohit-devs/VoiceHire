@@ -190,6 +190,10 @@ export class MockInterviewService implements InterviewService {
     };
   }
 
+  async updateCoachingProgress(): Promise<{ completed_days: number }> {
+    throw new Error("Coaching progress updates require the interview API.");
+  }
+
   async generateBlueprint(candidateId: string, jobId: string, sessionId?: string): Promise<InterviewBlueprint> {
     await sleep(800);
     return {

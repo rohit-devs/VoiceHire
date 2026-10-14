@@ -12,13 +12,13 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - Simulated interviews require explicit `is_demo`, use FakeProvider only when demo mode is enabled, return `is_demo` and `source`, mark every transcript `source="simulated"`, show a “Simulated demo” UI badge, and cannot produce evaluations or enter real report listings.
 - Fabricated demo transcripts/metrics were removed. Evaluation reports return explicit `insufficient data`; transcript/timing analytics expose only defined evidence-based metrics, with null values and reasons when evidence is missing, and identify simulated data.
 - Frontend interview setup/live/prepare/complete screens use the API service, require pasted resume text, accept job-description text or a category, and no longer use canned questions, simulated candidate answers, guessed question totals, or hardcoded fit scores.
-- Backend regression suite passes: 22 tests, including end-to-end text interview lifecycle through ASGI with FakeProvider, demo source/evaluation isolation, injection handling, token-budget behavior, and SQLite migration checks.
+- Backend regression suite passes: 38 tests, including end-to-end text interview lifecycle, report schema/fairness validation, persisted report idempotency, demo isolation, coaching progress, and SQLite migration checks.
 
 ### Partial
 
 - The API-backed full text flow is exercised in-process with FakeProvider, not in a real browser against a running backend.
 - OpenAIProvider retries, timeout handling, and token usage logging are implemented, but a real OpenAI request was not exercised. No candidate or résumé text is logged by the interviewer provider.
-- Evaluation report generation remains intentionally unavailable until a real response-analysis provider persists measured results; the UI reports insufficient data rather than showing synthetic scores.
+- Evaluation reports now separate measured transcript/timing metrics from schema-validated AI judgments. Reports are persisted and reloaded; live OpenAI-backed generation remains unverified locally.
 - Agora voice and live-provider flows are not verified; text answers are the working, tested path.
 
 ### Blocked by credentials or environment
@@ -36,6 +36,34 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 | `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js production build generated all 14 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices for modified files. |
+
+## Transparent LLM evaluation
+
+### Implemented
+
+- Added the versioned [evaluator.yaml](../packages/prompts/evaluator.yaml) rubric (`1.0.0`) with seven categories, per-category anchored 0–5 scales, default weights, evaluator safety instructions, and a `EVALUATION_RUBRIC_WEIGHTS` JSON override. Overrides must specify every category and are normalized.
+- Replaced report placeholders with a Pydantic-validated evaluator. Each question/answer pair is submitted with target-role and relevant resume/job context; evidence quotes must exactly occur in the answer. Category keys, scores, weighted overall score, question coverage, exercise categories, target role, and prohibited inferences are validated. Invalid output is retried once; a second invalid result persists a failed report with no AI assessment.
+- Reports separately persist computed speaking duration, WPM, filler rate, average and per-answer lengths, questions answered, and time remaining, plus AI judgments and rubric version. Missing evidence is represented by null values and reasons. Existing legacy reports are marked `insufficient_data` and their old score fields are not exposed through the new API.
+- Report generation is unique per session; repeat requests return the stored report and do not call the model again. Per-user/session token budgets are reserved and reconciled. Demo sessions cannot create or retrieve real evaluations.
+- Added a report UI that labels computed metrics separately from AI judgments, displays exact evidence quotes and a visible guidance disclaimer, and lets candidates mark practice exercises complete. Coaching items come from the three weakest rubric categories and match the target role; progress is persisted with ownership checks.
+- Removed the dashboard's fixed `+19%` trend indicator. The legacy performance-history chart remains empty until it has a lossless mapping from the new report schema.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Exit 0; 38 passed, 34 Pydantic deprecation warnings. Includes evaluator schema/fairness retries, missing-data nulls, measured-metric fixture, persisted report reload/idempotency, ownership, demo isolation, coaching progress, and SQLite migration up/down. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js production build generated all 14 application routes, with the same two image warnings. |
+| `git diff --check` | Exit 0; Git printed only line-ending conversion notices. |
+
+### Partial and blocked
+
+- Report generation, invalid-output handling, exact evidence validation, token accounting, reload persistence, and coaching progress are tested through the API with a deterministic test provider. No live LLM call or browser-based report walkthrough was performed.
+- Live evaluation requires a configured OpenAI key and remains unverified; actual provider response quality, scoring consistency, and billed usage were not independently confirmed.
+- PostgreSQL migration verification remains blocked by the Docker Desktop limitation documented in the baseline section. SQLite migration up/down is verified.
 
 ## Voice implementation and verification
 
@@ -97,7 +125,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 ### Partial
 
 - The real OpenAI-backed interview flow and Agora integration are not exercised against external services. Interview session construction and FakeProvider question-generation are covered by local API tests.
-- Dashboard and performance history show no scores until verified metrics exist. Report and fingerprint screens explicitly explain that verified evaluation data is unavailable; some coaching sample content remains separate from interview evaluation.
+- Dashboard and performance history show no fabricated trend values. New reports display measured metrics and schema-validated AI judgments separately; legacy fingerprint data remains unavailable.
 - SQLite migration setup and teardown are verified locally. PostgreSQL migration remains unverified: Docker Compose cannot reach the Docker Desktop Linux engine (`/_ping` returns HTTP 500). A Windows PostgreSQL service is running locally, but it was not treated as the isolated Compose/pgvector test database.
 - Existing databases from the old handwritten schema are not adopted automatically; they need a backup and a separate data-preserving migration plan.
 - Clerk auth, Agora voice, and OpenAI analysis code are present, but real-credential paths were not exercised.

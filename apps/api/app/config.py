@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_TEMPERATURE: float = 0.3
     OPENAI_MAX_TOKENS: int = 500
+    EVALUATION_RUBRIC_WEIGHTS: str = ""
 
     # ── Agora ──
     AGORA_APP_ID: str = ""

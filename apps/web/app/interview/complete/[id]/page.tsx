@@ -15,14 +15,30 @@ export default function InterviewCompletePage() {
 
   useEffect(() => {
     let active = true;
-    void apiInterviewService.generateEvaluation(interviewId).catch((cause: unknown) => {
-      if (!active) return;
-      setReportError(cause instanceof Error ? cause.message : "Verified evaluation is unavailable.");
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
+    void (async () => {
+      try {
+        const interview = await apiInterviewService.getInterview(interviewId);
+        if (interview?.isDemo) {
+          setReportError("Simulated demo — real evaluations are not generated from simulated sessions.");
+          return;
+        }
+        const report = await apiInterviewService.generateEvaluation(interviewId);
+        if (!active) return;
+        if (report.status === "completed" || report.status === "insufficient_data") {
+          router.replace(`/reports/${interviewId}`);
+          return;
+        }
+        setReportError(report.error || "Evaluation could not be completed.");
+        router.replace(`/reports/${interviewId}`);
+      } catch (cause: unknown) {
+        if (!active) return;
+        setReportError(cause instanceof Error ? cause.message : "Verified evaluation is unavailable.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
     return () => { active = false; };
-  }, [interviewId]);
+  }, [interviewId, router]);
 
   return (
     <AppShell>

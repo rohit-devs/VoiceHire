@@ -218,8 +218,8 @@ def test_websocket_replays_final_segments_and_rejects_other_users(monkeypatch):
             f"/api/evaluations/sessions/{other_session_id}/report",
             headers={"Authorization": "Bearer other-token"},
         )
-        assert report_response.status_code == 409
-        assert "insufficient data" in report_response.json()["detail"]
+        assert report_response.status_code == 404
+        assert "not been generated" in report_response.json()["detail"]
         reports_response = client.get(
             "/api/evaluations/user/reports",
             headers={"Authorization": "Bearer other-token"},

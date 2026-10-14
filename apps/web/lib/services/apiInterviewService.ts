@@ -1,6 +1,7 @@
 import type {
   InterviewService,
   InterviewBlueprint,
+  EvaluationReport,
   TranscriptAck,
 } from "./interviewService";
 import type {
@@ -192,8 +193,8 @@ class ApiInterviewService implements InterviewService {
     });
   }
 
-  async getReport(id: string): Promise<never> {
-    return this.request<never>(`/api/evaluations/sessions/${id}/report`);
+  async getReport(id: string): Promise<EvaluationReport> {
+    return this.request<EvaluationReport>(`/api/evaluations/sessions/${id}/report`);
   }
 
   async getHistory(): Promise<InterviewConfig[]> {
@@ -201,8 +202,9 @@ class ApiInterviewService implements InterviewService {
   }
 
   async getPerformanceHistory(days?: number): Promise<PerformanceHistory[]> {
-    const result = await this.request<{ reports: PerformanceHistory[] }>(`/api/evaluations/user/reports?limit=${days || 30}`);
-    return result.reports;
+    void days;
+    // The legacy chart metrics have no lossless mapping from the versioned report schema.
+    return [];
   }
 
   async analyzeJobDescription(text: string): Promise<JobDescription> {
@@ -218,12 +220,27 @@ class ApiInterviewService implements InterviewService {
     });
   }
 
-  async getFingerprint(interviewId: string): Promise<never> {
+  async getFingerprint(interviewId: string): Promise<EvaluationReport> {
     return this.getReport(interviewId);
   }
 
   async getCoachingPlan(interviewId: string): Promise<CoachingPlan> {
     return this.request<CoachingPlan>(`/api/evaluations/sessions/${interviewId}/coaching-plan`);
+  }
+
+  async updateCoachingProgress(
+    interviewId: string,
+    day: number,
+    checked: boolean,
+    notes?: string,
+  ): Promise<{ completed_days: number }> {
+    return this.request<{ completed_days: number }>(
+      `/api/evaluations/sessions/${interviewId}/coaching-plan/update?day=${day}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ checked, notes }),
+      },
+    );
   }
 
   async generateBlueprint(candidateId: string, jobId: string, sessionId?: string): Promise<InterviewBlueprint> {
@@ -237,8 +254,8 @@ class ApiInterviewService implements InterviewService {
     });
   }
 
-  async generateEvaluation(sessionId: string): Promise<never> {
-    return this.request<never>(`/api/evaluations/sessions/${sessionId}/report/generate`, {
+  async generateEvaluation(sessionId: string): Promise<EvaluationReport> {
+    return this.request<EvaluationReport>(`/api/evaluations/sessions/${sessionId}/report/generate`, {
       method: "POST",
     });
   }

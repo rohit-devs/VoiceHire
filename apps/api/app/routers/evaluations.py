@@ -1,28 +1,122 @@
-"""
-Interview Evaluation and Reporting Endpoints
-"""
+"""Interview evaluation, measured analytics, and coaching-plan endpoints."""
 
+import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+import math
+from copy import deepcopy
+from datetime import date
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Any, Dict
-from app.database import get_db
+
 from app.auth import get_current_user
-from app.models import InterviewSession, Transcript
+from app.config import settings
+from app.database import get_db
+from app.interview.evaluation_engine import (
+    MAX_EVALUATION_OUTPUT_TOKENS,
+    EvaluationOutputError,
+    generate_assessment,
+    has_evaluation_pairs,
+    load_rubric,
+    measured_evidence,
+)
+from app.interview.llm_provider import LLMProvider, LLMUnavailable, OpenAIProvider
+from app.interview.token_budget import (
+    TokenBudgetExceeded,
+    reconcile_tokens,
+    reserve_tokens,
+)
 from app.interview.voice_metrics import calculate_voice_metrics
+from app.models import (
+    CandidateProfile,
+    CoachingPlan,
+    EvaluationReport,
+    InterviewSession,
+    Transcript,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+GUIDANCE_NOTE = "AI scores are guidance for practice, not proof of competence."
 
-async def _verify_session_ownership(db: AsyncSession, session_id: str, user_id: str) -> None:
-    """Verify that the session exists and belongs to the given user."""
+
+def _evaluation_provider() -> LLMProvider:
+    return OpenAIProvider(settings.OPENAI_API_KEY)
+
+
+async def _owned_session(
+    db: AsyncSession, session_id: str, user_id: str
+) -> InterviewSession:
     session = await db.get(InterviewSession, session_id)
-    if not session:
+    if session is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied to this session")
+    return session
+
+
+def _report_payload(report: EvaluationReport) -> dict[str, Any]:
+    return {
+        "id": report.id,
+        "session_id": report.session_id,
+        "status": report.status,
+        "rubric_version": report.rubric_version,
+        "measured_metrics": report.measured_metrics,
+        "ai_assessments": report.ai_assessments,
+        "error": report.error,
+        "guidance_note": GUIDANCE_NOTE,
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+    }
+
+
+def _make_coaching_plan(
+    report: EvaluationReport, user_id: str, role: str, assessments: dict[str, Any]
+) -> CoachingPlan:
+    exercises = assessments["practice_exercises"]
+    days = [
+        {
+            "day": index,
+            "title": exercise["title"],
+            "description": exercise["task"],
+            "category": exercise["category"],
+            "target_role": role,
+            "duration": "20 minutes",
+            "completed": False,
+        }
+        for index, exercise in enumerate(exercises, start=1)
+    ]
+    return CoachingPlan(
+        user_id=user_id,
+        evaluation_report_id=report.id,
+        plan_data={"days": days, "total_days": len(days), "target_role": role},
+        start_date=date.today(),
+        completed_days=0,
+        progress_notes={},
+    )
+
+
+async def _evaluation_context(
+    db: AsyncSession, session: InterviewSession
+) -> dict[str, str]:
+    metadata = session.metadata_json or {}
+    resume = str(metadata.get("resume_text") or "")
+    if not resume and session.candidate_profile_id:
+        profile = await db.get(CandidateProfile, session.candidate_profile_id)
+        if profile is not None and profile.user_id == session.user_id:
+            resume = json.dumps(
+                profile.parsed_resume_json or {"skills": profile.skills or []},
+                ensure_ascii=False,
+            )
+    description = str(metadata.get("job_description") or "")
+    if not description and metadata.get("job_category"):
+        description = f"Role category: {metadata['job_category']}"
+    return {"resume": resume, "job_description": description}
+
 
 @router.get("/sessions/{session_id}/report")
 async def get_evaluation_report(
@@ -30,15 +124,15 @@ async def get_evaluation_report(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Reject report requests until a supported evaluation provider is available."""
-    await _verify_session_ownership(db, session_id, user["id"])
-    session = await db.get(InterviewSession, session_id)
-    if session is not None and session.is_demo:
-        raise HTTPException(status_code=409, detail="Simulated demo sessions do not have evaluations")
-    raise HTTPException(
-        status_code=409,
-        detail="insufficient data: verified evaluation reports are not available",
+    session = await _owned_session(db, session_id, user["id"])
+    if session.is_demo:
+        raise HTTPException(status_code=409, detail="Simulated demo sessions do not have real evaluations")
+    report = await db.scalar(
+        select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
+    if report is None:
+        raise HTTPException(status_code=404, detail="Evaluation report has not been generated")
+    return _report_payload(report)
 
 
 @router.post("/sessions/{session_id}/report/generate")
@@ -47,15 +141,147 @@ async def generate_evaluation_report(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Do not generate scores until a supported evaluation provider is available."""
-    await _verify_session_ownership(db, session_id, user["id"])
-    session = await db.get(InterviewSession, session_id)
-    if session is not None and session.is_demo:
-        raise HTTPException(status_code=409, detail="Simulated demo sessions do not have evaluations")
-    raise HTTPException(
-        status_code=409,
-        detail="insufficient data: verified evaluation reports are not available",
+    session = await _owned_session(db, session_id, user["id"])
+    if session.is_demo:
+        raise HTTPException(status_code=409, detail="Simulated demo sessions do not have real evaluations")
+
+    existing = await db.scalar(
+        select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
+    if existing is not None:
+        return _report_payload(existing)
+    if session.current_state != "completed":
+        raise HTTPException(status_code=409, detail="Only completed real sessions can be evaluated")
+
+    rubric = load_rubric(settings.EVALUATION_RUBRIC_WEIGHTS or None)
+    transcripts = list(
+        (
+            await db.scalars(
+                select(Transcript)
+                .where(Transcript.session_id == session_id)
+                .order_by(Transcript.id)
+            )
+        ).all()
+    )
+    report = EvaluationReport(
+        session_id=session_id,
+        status="processing",
+        rubric_version=rubric["version"],
+        measured_metrics=measured_evidence(session, transcripts),
+        ai_assessments=None,
+    )
+    db.add(report)
+    try:
+        await db.commit()
+        await db.refresh(report)
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(
+            select(EvaluationReport).where(EvaluationReport.session_id == session_id)
+        )
+        if existing is not None:
+            return _report_payload(existing)
+        raise
+
+    if not has_evaluation_pairs(transcripts):
+        report.status = "insufficient_data"
+        report.error = "No finalized question-and-answer pairs are available for evaluation."
+        await db.commit()
+        return _report_payload(report)
+
+    if not settings.openai_enabled:
+        report.status = "failed"
+        report.error = "Evaluation is unavailable because the OpenAI provider is not configured."
+        await db.commit()
+        return _report_payload(report)
+
+    transcript_chars = sum(len(row.message) for row in transcripts)
+    estimated_tokens = math.ceil(
+        (transcript_chars + 18_000) / 4
+    ) + 2 * MAX_EVALUATION_OUTPUT_TOKENS
+    try:
+        context = await _evaluation_context(db, session)
+        await reserve_tokens(
+            db,
+            user_id=user["id"],
+            session_id=session_id,
+            estimated_tokens=estimated_tokens,
+        )
+        generated = await generate_assessment(
+            session_id=session_id,
+            session=session,
+            transcripts=transcripts,
+            context=context,
+            provider=_evaluation_provider(),
+            weights_override=settings.EVALUATION_RUBRIC_WEIGHTS or None,
+        )
+        if generated["tokens_used"]:
+            await reconcile_tokens(
+                db,
+                user_id=user["id"],
+                session_id=session_id,
+                reserved_tokens=estimated_tokens,
+                actual_tokens=generated["tokens_used"],
+            )
+        else:
+            await reconcile_tokens(
+                db,
+                user_id=user["id"],
+                session_id=session_id,
+                reserved_tokens=estimated_tokens,
+                actual_tokens=0,
+            )
+        report.status = generated["status"]
+        report.rubric_version = generated["rubric_version"]
+        report.measured_metrics = generated["measured_metrics"]
+        report.ai_assessments = generated["ai_assessments"]
+        report.error = generated["error"]
+        if generated["ai_assessments"] is not None:
+            report.overall_score = generated["ai_assessments"]["overall_score"]
+            db.add(
+                _make_coaching_plan(
+                    report,
+                    user["id"],
+                    session.role,
+                    generated["ai_assessments"],
+                )
+            )
+        await db.commit()
+        await db.refresh(report)
+        return _report_payload(report)
+    except TokenBudgetExceeded as exc:
+        report = await db.get(EvaluationReport, report.id)
+        report.status = "failed"
+        report.error = str(exc)
+        await db.commit()
+        return _report_payload(report)
+    except EvaluationOutputError as exc:
+        await reconcile_tokens(
+            db,
+            user_id=user["id"],
+            session_id=session_id,
+            reserved_tokens=estimated_tokens,
+            actual_tokens=0,
+        )
+        report.status = "failed"
+        report.error = str(exc)
+        await db.commit()
+        return _report_payload(report)
+    except LLMUnavailable:
+        # The provider may have billed a request without returning usage metadata;
+        # keep the full reservation rather than undercounting cost.
+        report.status = "failed"
+        report.error = "The evaluation provider is temporarily unavailable."
+        await db.commit()
+        return _report_payload(report)
+    except Exception:
+        logger.exception("Evaluation failed session_id=%s", session_id)
+        await db.rollback()
+        report = await db.get(EvaluationReport, report.id)
+        report.status = "failed"
+        report.error = "Evaluation failed unexpectedly; no assessment was stored."
+        await db.commit()
+        return _report_payload(report)
 
 
 @router.get("/sessions/{session_id}/analytics")
@@ -64,11 +290,7 @@ async def get_interview_analytics(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Return measured transcript/timing metrics, with reasons when unavailable."""
-    await _verify_session_ownership(db, session_id, user["id"])
-    session = await db.get(InterviewSession, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Interview session not found")
+    session = await _owned_session(db, session_id, user["id"])
     transcript_rows = list(
         (
             await db.scalars(
@@ -97,34 +319,88 @@ async def get_interview_analytics(
     }
 
 
-@router.get("/sessions/{session_id}/coaching-plan", response_model=Dict[str, Any])
+class CoachingProgressUpdate(BaseModel):
+    checked: bool | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+@router.get("/sessions/{session_id}/coaching-plan")
 async def get_coaching_plan(
     session_id: str,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """
-    Get the 7-day coaching plan from the evaluation report.
-    """
-    await _verify_session_ownership(db, session_id, user["id"])
-    # TODO: Implement coaching plan retrieval
-    raise HTTPException(status_code=404, detail="Coaching plan not found")
+    session = await _owned_session(db, session_id, user["id"])
+    report = await db.scalar(
+        select(EvaluationReport).where(EvaluationReport.session_id == session_id)
+    )
+    if report is None:
+        raise HTTPException(status_code=404, detail="Coaching plan not found")
+    plan = await db.scalar(
+        select(CoachingPlan).where(
+            CoachingPlan.evaluation_report_id == report.id,
+            CoachingPlan.user_id == user["id"],
+        )
+    )
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Coaching plan not found")
+    return {
+        "id": plan.id,
+        "interview_id": session_id,
+        **plan.plan_data,
+        "completed_days": plan.completed_days,
+        "progress_notes": plan.progress_notes or {},
+        "created_at": plan.created_at.isoformat() if plan.created_at else None,
+    }
 
 
 @router.post("/sessions/{session_id}/coaching-plan/update")
 async def update_coaching_progress(
     session_id: str,
-    day: int,
-    notes: str,
+    day: int = Query(ge=1, le=7),
+    notes: str | None = Query(default=None, max_length=1000),
+    progress: CoachingProgressUpdate | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """
-    Update progress on the coaching plan.
-    """
-    await _verify_session_ownership(db, session_id, user["id"])
-    # TODO: Implement coaching progress update
-    return {"status": "updated", "session_id": session_id, "day": day}
+    await _owned_session(db, session_id, user["id"])
+    report = await db.scalar(
+        select(EvaluationReport).where(EvaluationReport.session_id == session_id)
+    )
+    if report is None:
+        raise HTTPException(status_code=404, detail="Coaching plan not found")
+    plan = await db.scalar(
+        select(CoachingPlan).where(
+            CoachingPlan.evaluation_report_id == report.id,
+            CoachingPlan.user_id == user["id"],
+        )
+    )
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Coaching plan not found")
+    plan_data = deepcopy(plan.plan_data)
+    days = list(plan_data.get("days", []))
+    item = next((entry for entry in days if entry.get("day") == day), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"Coaching plan day {day} not found")
+    update_data = progress or CoachingProgressUpdate()
+    if update_data.checked is not None:
+        item["completed"] = update_data.checked
+    plan_data["days"] = days
+    plan.plan_data = plan_data
+    progress_notes = dict(plan.progress_notes or {})
+    effective_notes = update_data.notes if update_data.notes is not None else notes
+    if effective_notes is not None:
+        progress_notes[str(day)] = effective_notes
+    plan.progress_notes = progress_notes
+    plan.completed_days = sum(bool(entry.get("completed")) for entry in days)
+    await db.commit()
+    return {
+        "status": "updated",
+        "session_id": session_id,
+        "day": day,
+        "completed": bool(item.get("completed")),
+        "completed_days": plan.completed_days,
+    }
 
 
 @router.get("/user/reports")
@@ -134,9 +410,19 @@ async def get_user_reports(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Return an empty history until verified evaluation reports are supported."""
+    result = await db.scalars(
+        select(EvaluationReport)
+        .join(InterviewSession, EvaluationReport.session_id == InterviewSession.id)
+        .where(
+            InterviewSession.user_id == user["id"],
+            InterviewSession.is_demo.is_(False),
+        )
+        .order_by(EvaluationReport.created_at.desc(), EvaluationReport.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    reports = list(result.all())
     return {
-        "reports": [],
-        "total": 0,
-        "insufficient_data": "verified evaluation reports are not available",
+        "reports": [_report_payload(report) for report in reports],
+        "total": len(reports),
     }

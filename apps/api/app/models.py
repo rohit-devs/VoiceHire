@@ -194,19 +194,24 @@ class EvaluationReport(TimestampMixin, Base):
     session_id: Mapped[str] = mapped_column(
         ForeignKey("interview_sessions.id", ondelete="CASCADE"), nullable=False, unique=True
     )
-    overall_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    technical_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    communication_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    confidence_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    clarity_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    relevance_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    problem_solving_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    overall_score: Mapped[float | None] = mapped_column(Float)
+    technical_score: Mapped[int | None] = mapped_column(Integer)
+    communication_score: Mapped[int | None] = mapped_column(Integer)
+    confidence_score: Mapped[int | None] = mapped_column(Integer)
+    clarity_score: Mapped[int | None] = mapped_column(Integer)
+    relevance_score: Mapped[int | None] = mapped_column(Integer)
+    problem_solving_score: Mapped[int | None] = mapped_column(Integer)
     communication_fingerprint: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    seven_day_coaching_plan: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    seven_day_coaching_plan: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     top_weakness: Mapped[str | None] = mapped_column(Text)
     top_strength: Mapped[str | None] = mapped_column(Text)
     recommendation: Mapped[str | None] = mapped_column(Text)
     detailed_feedback: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="processing")
+    rubric_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    measured_metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    ai_assessments: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
 
 
 class InterviewAnalytics(TimestampMixin, Base):
@@ -261,7 +266,10 @@ class AgoraEventLog(TimestampMixin, Base):
 
 class CoachingPlan(TimestampMixin, Base):
     __tablename__ = "coaching_plans"
-    __table_args__ = (Index("ix_coaching_plans_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_coaching_plans_user_created", "user_id", "created_at"),
+        UniqueConstraint("evaluation_report_id", name="uq_coaching_plans_report"),
+    )
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True, default=_id)
     user_id: Mapped[str] = mapped_column(
