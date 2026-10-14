@@ -10,6 +10,7 @@ from typing import Any
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -52,6 +53,7 @@ class User(TimestampMixin, Base):
     first_name: Mapped[str | None] = mapped_column(String(100))
     last_name: Mapped[str | None] = mapped_column(String(100))
     avatar_url: Mapped[str | None] = mapped_column(Text)
+    llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class CandidateProfile(TimestampMixin, Base):
@@ -103,8 +105,14 @@ class InterviewSession(TimestampMixin, Base):
     __tablename__ = "interview_sessions"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('scheduled', 'active', 'completed', 'cancelled')",
+            "status IN ('created', 'ready', 'connecting', 'interviewing', "
+            "'processing_response', 'completed', 'failed', 'cancelled')",
             name="ck_interview_sessions_status",
+        ),
+        CheckConstraint(
+            "current_state IN ('created', 'ready', 'connecting', 'interviewing', "
+            "'processing_response', 'completed', 'failed', 'cancelled')",
+            name="ck_interview_sessions_state",
         ),
         CheckConstraint(
             "difficulty IN ('easy', 'medium', 'hard')", name="ck_interview_sessions_difficulty"
@@ -124,9 +132,20 @@ class InterviewSession(TimestampMixin, Base):
     difficulty: Mapped[str] = mapped_column(String(50), nullable=False, default="medium")
     agora_channel: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     agora_channel_uid: Mapped[int | None] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="scheduled")
-    current_state: Mapped[str] = mapped_column(String(50), nullable=False, default="intro")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="created")
+    current_state: Mapped[str] = mapped_column(String(50), nullable=False, default="created")
     persona: Mapped[str] = mapped_column(String(50), nullable=False, default="technical")
+    interview_type: Mapped[str] = mapped_column(String(50), nullable=False, default="mixed")
+    requested_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=1800)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    question_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    state_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    state_history: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
@@ -155,6 +174,7 @@ class Transcript(TimestampMixin, Base):
     clarity_score: Mapped[float | None] = mapped_column(Float)
     relevance_score: Mapped[float | None] = mapped_column(Float)
     timestamp_ms: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="real")
 
 
 class EvaluationReport(TimestampMixin, Base):

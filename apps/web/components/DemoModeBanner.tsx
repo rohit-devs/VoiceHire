@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type AppMode = "demo" | "live" | "unknown";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const USE_REAL_API = process.env.NEXT_PUBLIC_USE_REAL_API === "true";
+const USE_REAL_API = process.env.NEXT_PUBLIC_USE_REAL_API !== "false";
 
 export default function DemoModeBanner() {
   const [mode, setMode] = useState<AppMode>(USE_REAL_API ? "unknown" : "demo");
@@ -44,7 +44,7 @@ export default function DemoModeBanner() {
 
   const message =
     mode === "demo"
-      ? "DEMO MODE — sample data only; scores are not real performance measurements."
+      ? "DEMO FEATURES ENABLED — simulated sessions are opt-in and labeled separately."
       : "MODE UNKNOWN — unable to verify whether this session uses demo or live data.";
 
   return (

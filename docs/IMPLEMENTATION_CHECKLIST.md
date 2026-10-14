@@ -2,6 +2,41 @@
 
 Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 
+## Current interview-flow task
+
+### Implemented and verified
+
+- Interview lifecycle endpoints use the persisted `created`, `ready`, `connecting`, `interviewing`, `processing_response`, `completed`, `failed`, and `cancelled` state machine. Start/end repetition, invalid transcript timing, transition history, timestamps, and question-budget completion are covered by API tests.
+- Session setup accepts candidate resume text plus a job description or category, and persists a blueprint before starting. Difficulty, duration, interview type, job context, experience level, persona, and explicit demo flag are stored and returned by the API; the web client maps the returned values on reload rather than substituting defaults.
+- Text answers are persisted before the API requests the next question. The provider receives the static, versioned interviewer rules as system content and blueprint/conversation data as user content. FakeProvider tests cover answer-grounded follow-ups, short/uncertain answers, injection attempts, and bounded question budgets.
+- Simulated interviews require explicit `is_demo`, use FakeProvider only when demo mode is enabled, return `is_demo` and `source`, mark every transcript `source="simulated"`, show a “Simulated demo” UI badge, and cannot produce evaluations or enter real report listings.
+- Fabricated demo transcripts/metrics were removed. Report generation and analytics now return explicit `insufficient data` responses instead of generating scores or zero-valued metrics without analyzed evidence.
+- Frontend interview setup/live/prepare/complete screens use the API service, require pasted resume text, accept job-description text or a category, and no longer use canned questions, simulated candidate answers, guessed question totals, or hardcoded fit scores.
+- Backend regression suite passes: 22 tests, including end-to-end text interview lifecycle through ASGI with FakeProvider, demo source/evaluation isolation, injection handling, token-budget behavior, and SQLite migration checks.
+
+### Partial
+
+- The API-backed full text flow is exercised in-process with FakeProvider, not in a real browser against a running backend.
+- OpenAIProvider retries, timeout handling, and token usage logging are implemented, but a real OpenAI request was not exercised. No candidate or résumé text is logged by the interviewer provider.
+- Evaluation report generation remains intentionally unavailable until a real response-analysis provider persists measured results; the UI reports insufficient data rather than showing synthetic scores.
+- Agora voice and live-provider flows are not verified; text answers are the working, tested path.
+
+### Blocked by credentials or environment
+
+- Live OpenAI behavior requires a valid `OPENAI_API_KEY`; no live-provider result is claimed.
+- PostgreSQL/pgvector verification remains blocked by the Docker Desktop failure recorded below.
+
+### Current command results
+
+| Command | Result |
+|---|---|
+| `python -m pip install -e ".[dev]"` (from `apps/api`, Python 3.12) | Exit 0 with `openai==1.109.1`; editable API and dev dependencies installed. |
+| `python -m pytest tests\\ -v` (from `apps/api`) | Exit 0; 22 passed, 20 Pydantic deprecation warnings. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js production build generated all 14 application routes. |
+| `git diff --check` | Exit 0; Git printed only line-ending conversion notices for modified files. |
+
 ## Feature inventory
 
 ### Implemented and verified
@@ -10,7 +45,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - FastAPI starts against local SQLite. `/api/health/ready`, `/api/health/live`, and `/` return HTTP 200.
 - API root and `/healthz` report the configured demo/live mode. Tests cover both values.
 - API tests cover demo auth behavior, session ownership, and failed user persistence.
-- Demo-mode banner labels sample scores as non-real measurements in the frontend.
+- Demo-mode banner identifies when demo features are enabled; each simulated interview is separately opted into and labeled.
 - The pnpm workspace discovers the web, API script package, database, and prompts workspaces.
 - Frontend `apps/web/lib` files are tracked; a targeted scan of all six files found no matching hardcoded secret patterns.
 - SQLAlchemy models and Alembic migrations are the backend schema authority; the web app does not import Prisma Client, so the unused Prisma package and duplicate handwritten SQL schema were removed.
@@ -21,7 +56,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 
 ### Partial
 
-- Interview setup, session APIs, report/evaluation endpoints, resume/JD handling, coaching, and Agora integration code exist, but an end-to-end interview against real external services was not exercised.
+- The real OpenAI-backed interview flow and Agora integration are not exercised against external services. Interview session construction and FakeProvider question-generation are covered by local API tests.
 - Dashboard, coaching, reports, and performance history include deterministic or generated sample values in the mock service. They are now visibly marked as demo/sample data; they are not real user measurements.
 - SQLite migration setup and teardown are verified locally. PostgreSQL migration remains unverified: Docker Compose cannot reach the Docker Desktop Linux engine (`/_ping` returns HTTP 500). A Windows PostgreSQL service is running locally, but it was not treated as the isolated Compose/pgvector test database.
 - Existing databases from the old handwritten schema are not adopted automatically; they need a backup and a separate data-preserving migration plan.
@@ -40,7 +75,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 
 ### Blocked by credentials or environment
 
-- Current local API reports OpenAI, Agora, Clerk, and PostgreSQL features as unavailable. Their live integrations cannot be verified without configured credentials/services.
+- Live OpenAI, Agora, Clerk, and PostgreSQL integrations cannot be verified without configured credentials/services.
 - Python 3.11 is not installed in this Windows environment (`py -0p` lists Python 3.12 and 3.14). CI now tests Python 3.11 and 3.12; only Python 3.12 was verified locally.
 
 ## Baseline command results
@@ -83,6 +118,7 @@ Known failures and caveats:
 - The installed `aioredis==2.0.1` was tested on Python 3.12 and failed to import with `ModuleNotFoundError: No module named 'distutils'`. It was removed from the manifest; the already-declared `redis` package's `redis.asyncio` import succeeds.
 - A clean Python 3.12 environment was install-tested. Python 3.11 could not be tested locally because that interpreter is unavailable.
 - Full live-service flows remain blocked by the credentials/services noted above.
+- Attempting `openai==3.31.0` with the repository's pinned FastAPI 0.104.1 failed dependency resolution because that OpenAI major requires AnyIO 4 while FastAPI 0.104.1 requires AnyIO below 4. The pin is `openai==1.109.1`, the newest compatible 1.x release; its `AsyncOpenAI` client and `max_completion_tokens` API were verified locally.
 - `docker compose up -d postgres` and `docker compose ps` could not communicate with Docker Desktop (`/_ping` or the container-list API returned HTTP 500), so the PostgreSQL/pgvector migration gate has not passed. Do not treat the locally running Windows PostgreSQL service as a substitute for the Compose database without confirming its ownership and configuration.
 
 ## Remaining
@@ -90,5 +126,6 @@ Known failures and caveats:
 - Resolve backend mypy and Pylint findings without disabling checks.
 - Run the added pull-request workflow on GitHub and address any environment-specific failures.
 - Add real-service end-to-end coverage when credentials and services are available.
+- Implement measured response analysis and report generation before exposing evaluation scores or communication metrics.
 - Retry `docker compose up -d postgres` and `alembic upgrade head` against the Compose PostgreSQL/pgvector service when Docker Desktop is healthy.
 - Plan an explicit, data-preserving adoption migration before upgrading any pre-existing database created by the removed handwritten schema.

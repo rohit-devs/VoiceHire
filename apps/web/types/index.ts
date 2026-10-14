@@ -49,6 +49,7 @@ export interface InterviewConfig {
   jobDescription?: JobDescription;
   metadata?: Record<string, unknown>;
   agoraChannel?: string;
+  isDemo?: boolean;
   createdAt: string;
 }
 

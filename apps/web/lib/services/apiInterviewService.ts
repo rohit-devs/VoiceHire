@@ -44,23 +44,89 @@ class ApiInterviewService implements InterviewService {
     return res.json() as Promise<T>;
   }
 
-  async createInterview(config: Partial<InterviewConfig>): Promise<InterviewConfig> {
-    return this.request<InterviewConfig>("/api/interviews/sessions", {
+  async createInterview(config: Partial<InterviewConfig> & {
+    resumeText?: string;
+    jobDescriptionText?: string;
+    jobCategory?: string;
+    isDemo?: boolean;
+  }): Promise<InterviewConfig> {
+    const response = await this.request<{
+      id: string;
+      role: string;
+      difficulty: InterviewConfig["difficulty"];
+      status: string;
+      current_state: string;
+      agora_channel: string;
+      is_demo: boolean;
+      persona: InterviewConfig["persona"];
+      interview_type: InterviewConfig["interviewType"];
+      duration_seconds: number;
+      company?: string;
+      experience_level?: string;
+      created_at?: string;
+    }>("/api/interviews/sessions", {
       method: "POST",
       body: JSON.stringify({
         role: config.role,
         difficulty: config.difficulty,
+        experience_level: config.experienceLevel,
         persona: config.persona,
         company: config.company,
         interviewer_type: config.interviewerType,
-        job_description: config.jobDescription?.description,
-        resume_text: config.resume?.experience,
+        interview_type: config.interviewType,
+        duration_seconds: (config.duration ?? 30) * 60,
+        job_description: config.jobDescriptionText ?? config.jobDescription?.description,
+        job_category: config.jobCategory,
+        resume_text: config.resumeText ?? config.resume?.experience,
+        is_demo: config.isDemo ?? false,
       }),
     });
+    return {
+      id: response.id,
+      role: response.role,
+      experienceLevel: response.experience_level ?? "",
+      interviewType: response.interview_type,
+      persona: response.persona,
+      difficulty: response.difficulty,
+      pressureMode: config.pressureMode ?? false,
+      duration: response.duration_seconds / 60,
+      company: response.company,
+      interviewerType: config.interviewerType,
+      agoraChannel: response.agora_channel,
+      isDemo: response.is_demo,
+      createdAt: response.created_at ?? new Date().toISOString(),
+    };
   }
 
   async getInterview(id: string): Promise<InterviewConfig | null> {
-    return this.request<InterviewConfig | null>(`/api/interviews/sessions/${id}`);
+    const response = await this.request<{
+      id: string;
+      role: string;
+      difficulty: InterviewConfig["difficulty"];
+      agora_channel: string;
+      is_demo: boolean;
+      persona?: InterviewConfig["persona"];
+      interview_type?: InterviewConfig["interviewType"];
+      duration_seconds?: number;
+      company?: string;
+      experience_level?: string;
+      created_at?: string;
+    } | null>(`/api/interviews/sessions/${id}`);
+    if (!response) return null;
+    return {
+      id: response.id,
+      role: response.role,
+      experienceLevel: response.experience_level ?? "",
+      interviewType: response.interview_type ?? "mixed",
+      persona: response.persona ?? "technical_lead",
+      difficulty: response.difficulty,
+      pressureMode: false,
+      duration: (response.duration_seconds ?? 1800) / 60,
+      company: response.company,
+      agoraChannel: response.agora_channel,
+      isDemo: response.is_demo,
+      createdAt: response.created_at ?? new Date().toISOString(),
+    };
   }
 
   async startInterview(id: string): Promise<{ sessionId: string; questions: InterviewQuestion[]; question_text?: string }> {
@@ -74,6 +140,19 @@ class ApiInterviewService implements InterviewService {
     await this.request(`/api/interviews/sessions/${id}/transcript`, {
       method: "POST",
       body: JSON.stringify({ speaker: "candidate", message }),
+    });
+  }
+
+  async generateNextQuestion(id: string, candidateTranscript: string) {
+    return this.request<{
+      question_text: string;
+      state: string;
+      is_demo: boolean;
+      source: "real" | "simulated";
+      degraded: boolean;
+    }>(`/api/interviews/sessions/${id}/generate-question`, {
+      method: "POST",
+      body: JSON.stringify({ candidate_transcript: candidateTranscript }),
     });
   }
 

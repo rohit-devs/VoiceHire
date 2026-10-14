@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { interviewService } from "@/lib/services";
+import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
 import { useInterviewStore } from "@/stores/interviewStore";
 import { useInterviewWebSocket } from "@/hooks/useInterviewWebSocket";
 import { useFetchAgoraToken } from "@/hooks/useFetchAgoraToken";
 import { useAgoraRTC } from "@/hooks/useAgoraRTC";
+import { useAuth } from "@clerk/nextjs";
 import { VoiceOrb } from "@/components/interview/VoiceOrb";
-import { PressureIndicator } from "@/components/interview/PressureIndicator";
-import { Loader2, ArrowRight, PhoneOff, Mic } from "lucide-react";
+import { Loader2, ArrowRight, PhoneOff } from "lucide-react";
 
 type OrbState = "idle" | "listening" | "thinking" | "speaking" | "user_speaking" | "interrupted";
 
@@ -31,74 +31,85 @@ interface LiveMetrics {
   answerStructure: number;
 }
 
-const MOCK_QUESTIONS = [
-  { q: "Tell me about yourself and your experience with React.", category: "Introduction" },
-  { q: "How does the virtual DOM work in React?", category: "Technical" },
-  { q: "Explain the difference between REST and GraphQL.", category: "Technical" },
-  { q: "How would you design a real-time chat application?", category: "System Design" },
-  { q: "Describe a challenging bug you fixed recently.", category: "Behavioral" },
-  { q: "What is JWT and how does it work?", category: "Technical" },
-  { q: "How do you handle state management in large apps?", category: "Technical" },
-  { q: "Explain the concept of middleware in Express.", category: "Technical" },
-];
-
 export default function LiveInterviewPage() {
   const router = useRouter();
   const params = useParams();
   const interviewId = params.id as string;
   const { setInterviewPhase, setSessionId } = useInterviewStore();
 
+  const { isLoaded: clerkLoaded, isSignedIn, getToken } = useAuth();
+  const [authToken, setAuthTokenState] = useState<string | null>(null);
+
+  const [agoraToken, setAgoraToken] = useState("");
+  const [agoraChannel, setAgoraChannel] = useState("");
   const [loading, setLoading] = useState(true);
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [aiQuestion, setAiQuestion] = useState("");
+  const [answerText, setAnswerText] = useState("");
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
   const [metrics, setMetrics] = useState<LiveMetrics | null>(null);
   const [orbState, setOrbState] = useState<OrbState>("idle");
-  const [showPressure, setShowPressure] = useState(false);
-  const [pressureEvent, setPressureEvent] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
-  const [useRealVoice, setUseRealVoice] = useState(false);
+  const [useRealVoice, setUseRealVoice] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState("");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // WebSocket for real-time transcript/metrics
-  const sessionId = `session-${interviewId}-${Date.now()}`;
+  const sessionId = interviewId;
   const {
     isConnected: wsConnected,
     isConnecting: wsConnecting,
     transcripts: wsTranscripts,
     metrics: wsMetrics,
-    currentState: _currentState,
     aiThinking,
     connect: connectWebSocket,
     disconnect: disconnectWebSocket,
-  } = useInterviewWebSocket({ sessionId, autoConnect: false });
+   } = useInterviewWebSocket({ sessionId, autoConnect: false, authToken });
 
-  // Agora token fetching
-  const { fetchToken, isLoading: tokenLoading, error: tokenError } = useFetchAgoraToken();
+   // Agora token fetching
+   const { fetchToken, isLoading: tokenLoading, error: tokenError } = useFetchAgoraToken({ authToken });
 
   // Agora RTC
   const {
     isConnected: agoraConnected,
     isConnecting: agoraConnecting,
-    audioLevel: _audioLevel,
     error: agoraError,
     join: joinAgora,
     leave: leaveAgora,
-    muteAudio: _muteAudio,
-    unmuteAudio: _unmuteAudio,
-  } = useAgoraRTC({
-    token: "",
-    channelName: `vh-${interviewId}`,
+   } = useAgoraRTC({
+    token: agoraToken,
+    channelName: agoraChannel || `vh-${interviewId}`,
     uid: 1,
     autoConnect: false,
-  });
+   });
 
-  // Initialize session
+  // Load Clerk JWT for authenticated WebSocket/token requests
   useEffect(() => {
-    interviewService.getInterview(interviewId).then(() => setLoading(false));
-    setSessionId(sessionId);
-    setInterviewPhase("live");
+    if (!clerkLoaded) return;
+    (async () => {
+      const token = isSignedIn ? await getToken() : null;
+      setAuthTokenState(token);
+    })();
+  }, [clerkLoaded, isSignedIn, getToken]);
+
+  // Initialize the persisted session.
+  useEffect(() => {
+    interviewService.getInterview(interviewId)
+      .then((session) => {
+        if (!session) throw new Error("Interview session was not found.");
+        setAgoraChannel(session.agoraChannel ?? "");
+        setIsDemo(session.isDemo ?? false);
+        setSessionId(sessionId);
+        setInterviewPhase("live");
+        setLoading(false);
+      })
+      .catch((cause) => {
+        setActionError(cause instanceof Error ? cause.message : "Failed to load interview.");
+        setLoading(false);
+      });
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       disconnectWebSocket();
@@ -106,7 +117,7 @@ export default function LiveInterviewPage() {
     };
   }, [interviewId, sessionId, setSessionId, setInterviewPhase, disconnectWebSocket, leaveAgora]);
 
-  // Sync WebSocket transcripts to local state
+  // Sync WebSocket transcripts to local state (merge, don't replace)
   useEffect(() => {
     if (wsTranscripts.length > 0) {
       const mapped = wsTranscripts.map((t, idx) => ({
@@ -115,7 +126,16 @@ export default function LiveInterviewPage() {
         text: t.text,
         timestamp: t.timestamp_ms,
       }));
-      setTranscripts(mapped);
+      // Merge WebSocket transcripts into local, skipping exact duplicates
+      setTranscripts((prev) => {
+        const existingKeys = new Set(prev.map((t) => `${t.speaker}:${t.text}`));
+        const newOnes = mapped.filter(
+          (t) => !existingKeys.has(`${t.speaker}:${t.text}`)
+        );
+        return [...prev, ...newOnes];
+      });
+      const latestQuestion = [...wsTranscripts].reverse().find((t) => t.speaker === "interviewer");
+      if (latestQuestion) setAiQuestion(latestQuestion.text);
       setOrbState("speaking");
     }
   }, [wsTranscripts]);
@@ -148,77 +168,111 @@ export default function LiveInterviewPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isInterviewStarted]);
 
-  // Pressure mode simulation
-  useEffect(() => {
-    if (questionIndex > 0 && questionIndex % 3 === 0 && isInterviewStarted) {
-      setShowPressure(true);
-      setPressureEvent("Your previous answer was vague. Explain with an example.");
-      setTimeout(() => { setShowPressure(false); setPressureEvent(""); }, 4000);
-    }
-  }, [questionIndex, isInterviewStarted]);
-
-  // Start interview with real voice or mock
+  // The persisted API session is authoritative; realtime voice is optional.
   const startInterview = useCallback(async () => {
-    setIsInterviewStarted(true);
-
-    if (useRealVoice) {
-      // Real voice flow: fetch Agora token, connect WebSocket, join Agora
-      try {
-        const tokenData = await fetchToken(`vh-${interviewId}`, 1);
+    setActionError("");
+    try {
+      const startResponse = await interviewService.startInterview(sessionId);
+      if (startResponse.question_text) {
+        setAiQuestion(startResponse.question_text);
+        setTranscripts([{ id: "first-q", speaker: "interviewer", text: startResponse.question_text, timestamp: Date.now() }]);
+      }
+      setIsInterviewStarted(true);
+      setOrbState("listening");
+      if (useRealVoice && authToken && agoraChannel) {
+        const tokenData = await fetchToken(agoraChannel, 1);
         if (tokenData) {
-          await joinAgora();
+          setAgoraToken(tokenData.token);
+          await joinAgora({
+            token: tokenData.token,
+            appId: tokenData.app_id,
+            channelName: tokenData.channel_name,
+            uid: tokenData.uid,
+          });
           connectWebSocket();
           setOrbState("listening");
         }
-      } catch (err) {
-        console.error("Failed to start real voice interview:", err);
-        setUseRealVoice(false);
-        startMockInterview();
       }
-    } else {
-      startMockInterview();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Failed to start interview.");
+      setIsInterviewStarted(false);
     }
-  }, [useRealVoice, interviewId, fetchToken, joinAgora, connectWebSocket]);
+  }, [useRealVoice, authToken, agoraChannel, sessionId, fetchToken, joinAgora, connectWebSocket]);
 
-  const startMockInterview = () => {
-    setOrbState("speaking");
-    setTranscripts([{ id: "t1", speaker: "interviewer", text: MOCK_QUESTIONS[0].q, timestamp: Date.now() }]);
-  };
-
-  const handleUserSpeak = useCallback(() => {
+  const submitAnswer = useCallback(async () => {
+    const message = answerText.trim();
+    if (!message) return;
+    setActionError("");
     setOrbState("user_speaking");
-    const userText = "I used JWT authentication in my last project because it provides stateless authentication, which is great for scalability.";
-    setTranscripts((prev) => [...prev, { id: `t${Date.now()}`, speaker: "candidate", text: userText, timestamp: Date.now() }]);
-
-    setTimeout(() => {
+    try {
+      await interviewService.submitTranscript(sessionId, message);
+      setTranscripts((prev) => [...prev, {
+        id: `cand-${Date.now()}`,
+        speaker: "candidate",
+        text: message,
+        timestamp: Date.now(),
+      }]);
+      setAnswerText("");
+      setLastSubmittedAnswer(message);
       setOrbState("thinking");
-      setTimeout(() => {
-        setOrbState("speaking");
-        setQuestionIndex(1);
-        setTranscripts((prev) => [...prev, { id: `t${Date.now() + 1}`, speaker: "interviewer", text: "Good. Why did you choose JWT over session-based authentication?", timestamp: Date.now() }]);
-        setMetrics({ clarity: 82, confidence: 78, relevance: 91, fillerWordsCount: 5, avgWpm: 132, longPauses: 6, avgResponseTime: 4.2, answerStructure: 85 });
-      }, 2000);
-    }, 2000);
-  }, []);
-
-  const handleNextQuestion = useCallback(() => {
-    if (questionIndex < MOCK_QUESTIONS.length - 1) {
-      setOrbState("speaking");
-      setQuestionIndex((i) => i + 1);
-      setTranscripts((prev) => [...prev, { id: `t${Date.now()}`, speaker: "interviewer", text: MOCK_QUESTIONS[questionIndex + 1].q, timestamp: Date.now() }]);
+      const nextQuestion = await interviewService.generateNextQuestion(sessionId, message);
+      setAiQuestion(nextQuestion.question_text);
+      setTranscripts((prev) => [...prev, {
+        id: `question-${Date.now()}`,
+        speaker: "interviewer",
+        text: nextQuestion.question_text,
+        timestamp: Date.now(),
+      }]);
+      setLastSubmittedAnswer("");
+      setOrbState("listening");
+      if (nextQuestion.state === "completed") {
+        setInterviewPhase("processing");
+        disconnectWebSocket();
+        leaveAgora();
+        router.push(`/interview/complete/${interviewId}`);
+      }
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Failed to submit answer or generate the next question.");
+      setOrbState("listening");
     }
-  }, [questionIndex]);
+  }, [answerText, disconnectWebSocket, interviewId, leaveAgora, router, sessionId, setInterviewPhase]);
+
+  const retryQuestionGeneration = useCallback(async () => {
+    if (!lastSubmittedAnswer) return;
+    setActionError("");
+    setOrbState("thinking");
+    try {
+      const nextQuestion = await interviewService.generateNextQuestion(sessionId, lastSubmittedAnswer);
+      setAiQuestion(nextQuestion.question_text);
+      setTranscripts((prev) => [...prev, {
+        id: `question-${Date.now()}`,
+        speaker: "interviewer",
+        text: nextQuestion.question_text,
+        timestamp: Date.now(),
+      }]);
+      setLastSubmittedAnswer("");
+      setOrbState("listening");
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Failed to generate the next question.");
+      setOrbState("listening");
+    }
+  }, [lastSubmittedAnswer, sessionId]);
 
   const handleEndInterview = async () => {
-    setInterviewPhase("processing");
-    await interviewService.endInterview(interviewId);
-    disconnectWebSocket();
-    leaveAgora();
-    router.push(`/interview/complete/${interviewId}`);
+    setActionError("");
+    try {
+      await interviewService.endInterview(interviewId);
+      setInterviewPhase("processing");
+      disconnectWebSocket();
+      leaveAgora();
+      router.push(`/interview/complete/${interviewId}`);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Failed to end interview.");
+    }
   };
 
   const toggleVoiceMode = () => {
-    setUseRealVoice(!useRealVoice);
+    setUseRealVoice((enabled) => !enabled);
   };
 
   const formatTime = (seconds: number) => {
@@ -239,7 +293,8 @@ export default function LiveInterviewPage() {
     );
   }
 
-  const currentQuestion = MOCK_QUESTIONS[questionIndex];
+  const interviewerQuestions = transcripts.filter((transcript) => transcript.speaker === "interviewer");
+  const currentQuestion = { q: aiQuestion || "Waiting for the AI interviewer...", category: "Live session" };
 
   return (
     <div className="h-screen w-full bg-[#0a0a0f] flex flex-col overflow-hidden">
@@ -248,6 +303,11 @@ export default function LiveInterviewPage() {
         <div className="flex items-center gap-3">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[13px] font-semibold text-white">Live Interview</span>
+          {isDemo && (
+            <span className="text-[10px] font-semibold text-amber-200 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              Simulated demo
+            </span>
+          )}
           <span className="text-[11px] text-muted-foreground px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
             Technical Round
           </span>
@@ -286,10 +346,7 @@ export default function LiveInterviewPage() {
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Progress</p>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs text-muted-foreground">Question</span>
-                <span className="text-xs font-semibold text-white">{questionIndex + 1}/{MOCK_QUESTIONS.length}</span>
-              </div>
-              <div className="h-1 rounded-full bg-white/[0.08] overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-500" style={{ width: `${((questionIndex + 1) / MOCK_QUESTIONS.length) * 100}%` }} />
+                <span className="text-xs font-semibold text-white">{interviewerQuestions.length}</span>
               </div>
             </div>
 
@@ -329,18 +386,16 @@ export default function LiveInterviewPage() {
           <div className="mt-6">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Questions</p>
             <div className="space-y-1">
-              {MOCK_QUESTIONS.map((q, i) => (
+              {interviewerQuestions.map((transcript, i) => (
                 <div
-                  key={i}
+                  key={transcript.id}
                   className={`rounded-md px-2 py-1.5 text-[11px] transition-all ${
-                    i === questionIndex
+                    i === interviewerQuestions.length - 1
                       ? "bg-violet-500/10 border border-violet-500/20 text-violet-300"
-                      : i < questionIndex
-                      ? "text-muted-foreground"
-                      : "text-muted-foreground/50"
+                      : "text-muted-foreground"
                   }`}
                 >
-                  <span className="font-medium">Q{i + 1}:</span> {q.q.slice(0, 35)}...
+                  <span className="font-medium">Q{i + 1}:</span> {transcript.text.slice(0, 35)}...
                 </div>
               ))}
             </div>
@@ -351,8 +406,6 @@ export default function LiveInterviewPage() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* AI Interviewer Card */}
           <div className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden">
-            {showPressure && <PressureIndicator event={pressureEvent} />}
-
             <div className="w-full max-w-2xl space-y-6">
               {/* AI Card */}
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
@@ -431,27 +484,36 @@ export default function LiveInterviewPage() {
                   </button>
                 ) : (
                   <>
-                    {orbState === "listening" && (
-                      <button
-                        onClick={handleUserSpeak}
-                        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-emerald-500/40 transition-all"
-                      >
-                        <Mic className="h-4 w-4" />
-                        Simulate Response
-                      </button>
-                    )}
-                    <button
-                      onClick={handleNextQuestion}
-                      disabled={questionIndex >= MOCK_QUESTIONS.length - 1}
-                      className="rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                    <textarea
+                      value={answerText}
+                      onChange={(event) => setAnswerText(event.target.value)}
+                      placeholder="Type your answer"
+                      rows={2}
+                      className="w-full max-w-md rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                     >
-                      Next Question
+                    </textarea>
+                    <button
+                      onClick={submitAnswer}
+                      disabled={!answerText.trim() || orbState === "thinking"}
+                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Submit Answer
                     </button>
                   </>
                 )}
               </div>
 
               {/* Error display */}
+              {actionError && (
+                <div role="alert" className="text-xs text-rose-400 text-center">
+                  {actionError}
+                  {lastSubmittedAnswer && (
+                    <button onClick={retryQuestionGeneration} className="ml-2 underline">
+                      Retry question
+                    </button>
+                  )}
+                </div>
+              )}
               {(tokenError || agoraError) && (
                 <div className="text-xs text-rose-400 text-center">
                   {tokenError || agoraError}
@@ -471,10 +533,7 @@ export default function LiveInterviewPage() {
               <div className="flex-1" />
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">Interview Progress</span>
-                <span className="text-xs font-semibold text-white">{questionIndex + 1}/{MOCK_QUESTIONS.length}</span>
-                <div className="w-24 h-1 rounded-full bg-white/[0.08] overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500" style={{ width: `${((questionIndex + 1) / MOCK_QUESTIONS.length) * 100}%` }} />
-                </div>
+                <span className="text-xs font-semibold text-white">{interviewerQuestions.length} asked</span>
               </div>
             </div>
           )}

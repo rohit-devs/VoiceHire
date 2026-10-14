@@ -15,6 +15,10 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 
+class ResponseAnalysisUnavailable(RuntimeError):
+    """Raised when a real response analysis cannot be produced."""
+
+
 class ResponseAnalysis(BaseModel):
     """
     Structured response analysis result.
@@ -262,7 +266,7 @@ Return JSON with this exact structure:
                         model=self.model,
                         response_format={"type": "json_object"},
                         temperature=0.3,
-                        max_tokens=500,
+                        max_completion_tokens=500,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_message},
@@ -287,38 +291,16 @@ Return JSON with this exact structure:
             
             return analysis
 
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Failed to parse OpenAI response: {e}")
-            star_fallback = self._analyze_star(candidate_response) if current_state == "behavioral" else None
-            return ResponseAnalysis(
-                technical_score=50,
-                relevance_score=50,
-                clarity_score=50,
-                confidence_score=50,
-                filler_words_detected=filler_words,
-                recommended_action="CLARIFY",
-                follow_up_reason="Analyzer encountered an error, requesting clarification",
-                difficulty_adjustment="NONE",
-                state_transition=None,
-                confidence_in_scores=10,
-                star_analysis=star_fallback
-            )
+        except json.JSONDecodeError as exc:
+            logger.error("Response analysis returned invalid JSON")
+            raise ResponseAnalysisUnavailable(
+                "Response analysis is unavailable; no scores were generated"
+            ) from exc
         except Exception as e:
-            logger.error(f"❌ Analysis failed: {e}")
-            star_fallback = self._analyze_star(candidate_response) if current_state == "behavioral" else None
-            return ResponseAnalysis(
-                technical_score=50,
-                relevance_score=50,
-                clarity_score=50,
-                confidence_score=50,
-                filler_words_detected=[],
-                recommended_action="CLARIFY",
-                follow_up_reason="Analyzer service unavailable, requesting clarification",
-                difficulty_adjustment="NONE",
-                state_transition=None,
-                confidence_in_scores=0,
-                star_analysis=star_fallback
-            )
+            logger.error("Response analysis failed error_type=%s", type(e).__name__)
+            raise ResponseAnalysisUnavailable(
+                "Response analysis is unavailable; no scores were generated"
+            ) from e
 
     async def analyze_transcript_segment(
         self,

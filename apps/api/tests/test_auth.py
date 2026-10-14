@@ -55,7 +55,7 @@ class TestAuthDemoMode:
         assert data["id"]
         assert data["agora_channel"].startswith("vh-")
         assert data["role"] == "Backend Engineer"
-        assert data["status"] == "scheduled"
+        assert data["status"] == "created"
 
     @pytest.mark.asyncio
     async def test_create_session_persists_demo_user_ownership(self, client):
@@ -178,8 +178,8 @@ class TestOwnership:
                     user_id=other_user_id,
                     role="Engineer",
                     difficulty="medium",
-                    status="scheduled",
-                    current_state="intro",
+                    status="created",
+                    current_state="created",
                     agora_channel=f"vh-{session_id[:8]}",
                     persona="technical",
                     metadata_json={},

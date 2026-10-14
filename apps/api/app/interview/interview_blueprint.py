@@ -52,7 +52,7 @@ class InterviewBlueprint(BaseModel):
     role_preferred_skills: List[str] = Field(default_factory=list)
 
     # Match analysis
-    overall_fit_score: float = Field(..., ge=0, le=1)
+    overall_fit_score: Optional[float] = Field(None, ge=0, le=1)
     skill_gaps: List[str] = Field(default_factory=list)
     skill_strengths: List[str] = Field(default_factory=list)
 
@@ -84,6 +84,10 @@ class InterviewBlueprint(BaseModel):
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
     expected_duration_seconds: int = Field(..., description="Total expected interview duration")
+    resume_text: str = ""
+    job_description_text: str = ""
+    job_category: Optional[str] = None
+    interview_type: str = "mixed"
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
@@ -105,6 +109,11 @@ class BlueprintBuilder:
         company: str,
         jd_match,
         job_description,
+        difficulty: int = 2,
+        duration_seconds: int = 1800,
+        interview_type: str = "mixed",
+        resume_text: str = "",
+        job_category: Optional[str] = None,
     ) -> InterviewBlueprint:
         """
         Create personalized interview blueprint.
@@ -125,7 +134,9 @@ class BlueprintBuilder:
 
         try:
             # Infer difficulty level based on fit
-            if jd_match.overall_fit_score > 0.85:
+            if jd_match.overall_fit_score is None:
+                difficulty_level = difficulty
+            elif jd_match.overall_fit_score > 0.85:
                 difficulty_level = 1  # Easy - candidate well-prepared
             elif jd_match.overall_fit_score > 0.65:
                 difficulty_level = 2  # Medium - standard interview
@@ -208,7 +219,7 @@ class BlueprintBuilder:
             elif difficulty_level == 3:
                 time_per_state["technical"] = 300
 
-            total_duration = sum(time_per_state.values())
+            total_duration = duration_seconds
 
             # Build blueprint
             blueprint = InterviewBlueprint(
@@ -233,6 +244,10 @@ class BlueprintBuilder:
                 evaluation_criteria=evaluation_criteria,
                 time_per_state_seconds=time_per_state,
                 expected_duration_seconds=total_duration,
+                resume_text=resume_text,
+                job_description_text=job_description.job_description_text,
+                job_category=job_category,
+                interview_type=interview_type,
             )
 
             logger.info(

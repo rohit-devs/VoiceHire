@@ -123,6 +123,16 @@ export class MockInterviewService implements InterviewService {
     await sleep(100);
   }
 
+  async generateNextQuestion(): Promise<{
+    question_text: string;
+    state: string;
+    is_demo: boolean;
+    source: "real" | "simulated";
+    degraded: boolean;
+  }> {
+    throw new Error("Next-question generation requires the interview API.");
+  }
+
   async endInterview(): Promise<void> {
     await sleep(300);
   }

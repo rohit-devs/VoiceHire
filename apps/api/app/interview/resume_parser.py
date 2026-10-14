@@ -132,9 +132,10 @@ class ResumeParser:
         """
 
         if not self.client:
-            logger.warning("⚠️  No OpenAI client configured. Cannot parse resume.")
+            logger.info("No resume extraction provider configured; retaining source text only")
             return ParsedResume(
-                full_name="Unknown",
+                full_name="Candidate",
+                professional_summary=resume_text,
                 parsing_confidence=0.0,
             )
 
@@ -171,7 +172,7 @@ Ensure all lists are populated. If a field is not found, use null or empty list.
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 temperature=0.2,  # Low temperature for consistency
-                max_tokens=2000,
+                max_completion_tokens=2000,
                 response_format={"type": "json_object"},
                 messages=[
                     {

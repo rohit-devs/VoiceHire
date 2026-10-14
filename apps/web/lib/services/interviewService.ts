@@ -44,10 +44,22 @@ export interface EvaluationReport {
 }
 
 export interface InterviewService {
-  createInterview(config: Partial<InterviewConfig>): Promise<InterviewConfig>;
+  createInterview(config: Partial<InterviewConfig> & {
+    resumeText?: string;
+    jobDescriptionText?: string;
+    jobCategory?: string;
+    isDemo?: boolean;
+  }): Promise<InterviewConfig>;
   getInterview(id: string): Promise<InterviewConfig | null>;
   startInterview(id: string): Promise<{ sessionId: string; questions: InterviewQuestion[]; question_text?: string }>;
   submitTranscript(id: string, message: string): Promise<void>;
+  generateNextQuestion(id: string, candidateTranscript: string): Promise<{
+    question_text: string;
+    state: string;
+    is_demo: boolean;
+    source: "real" | "simulated";
+    degraded: boolean;
+  }>;
   endInterview(id: string): Promise<void>;
   getReport(id: string): Promise<InterviewReport | null>;
   getHistory(): Promise<InterviewConfig[]>;

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
-import { interviewService } from "@/lib/services";
+import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
 import { useInterviewStore } from "@/stores/interviewStore";
 import { ArrowRight, FileText, Target, Sparkles, Loader2, Activity, BarChart3 } from "lucide-react";
 
@@ -89,16 +89,12 @@ export default function PrepareInterviewPage() {
             <h2 className="text-lg font-semibold text-white mb-6">Interview Details</h2>
             <div className="space-y-4">
               <DetailRow label="Role" value={interview.role} />
-              <DetailRow label="Experience" value={interview.experienceLevel} />
+              {interview.experienceLevel && <DetailRow label="Experience" value={interview.experienceLevel} />}
               <DetailRow label="Type" value={interview.interviewType.replace("_", " ")} />
               <DetailRow label="Persona" value={interview.persona?.replace("_", " ")} />
               <DetailRow label="Difficulty" value={interview.difficulty} />
               <DetailRow label="Duration" value={`${interview.duration} minutes`} />
-              <DetailRow label="Questions" value="~10 questions" />
-              <DetailRow label="Resume" value={interview.resume?.filename || "Uploaded"} />
-              {interview.jobDescription && (
-                <DetailRow label="JD Match" value={`${interview.jobDescription.jobFitScore}%`} />
-              )}
+              {interview.isDemo && <DetailRow label="Session type" value="Simulated demo" />}
             </div>
           </div>
 
