@@ -12,6 +12,15 @@ npm install -g pnpm@latest
 pnpm install
 ```
 
+Install the API dependencies, including the test tooling, in the active Python environment:
+
+```bash
+cd apps/api
+python -m pip install -e ".[dev]"
+pytest -q tests/test_auth.py
+cd ../..
+```
+
 ### 2. Configure Environment
 
 ```bash
@@ -27,9 +36,6 @@ CLERK_SECRET_KEY=sk_test_xxx
 
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/voicehire_db
-
-# Redis
-REDIS_URL=redis://localhost:6379
 
 # Agora (get from https://console.agora.io)
 AGORA_APP_ID=your_app_id
@@ -71,16 +77,14 @@ docker run --name postgres-voicehire \
 docker exec postgres-voicehire psql -U postgres -d voicehire_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-#### Apply Schema
+#### Apply database migrations
 
 ```bash
-# Using Prisma
-cd packages/database
-pnpm db:push
-
-# Or using raw SQL
-psql voicehire_db -f databases/schema.sql
+cd apps/api
+alembic upgrade head
 ```
+
+SQLAlchemy models and Alembic migrations are the single schema authority. The unused Prisma package/schema and hand-maintained SQL schema were removed; the web app does not import Prisma Client. Redis is not used by the API and is not required.
 
 ### 4. Start Development Servers
 
@@ -153,22 +157,13 @@ pnpm start         # Production start
 pnpm lint          # Run pylint
 pnpm format        # Format with black
 pnpm type-check    # Type checking with mypy
+pnpm db:migrate    # Apply Alembic migrations (from apps/api)
+pnpm db:seed:demo  # Insert the demo user; refuses non-demo mode
 ```
 
-### Database (`packages/database`)
+### Database schema
 
-```bash
-cd packages/database
-
-# Apply migrations
-pnpm db:push       # Push schema to database
-
-# Generate Prisma client
-pnpm db:generate   # Generate type-safe client
-
-# Seed database (when implemented)
-pnpm db:seed       # Run seed script
-```
+The database schema is managed by SQLAlchemy models and Alembic. See [docs/database-setup.md](docs/database-setup.md) for setup, migration, and legacy-database guidance.
 
 ## Code Structure
 
@@ -205,14 +200,11 @@ apps/web/
 
 ## Testing
 
-### Backend Tests (to be implemented)
+### Backend Tests
 
 ```bash
 cd apps/api
-pytest                    # Run all tests
-pytest -v               # Verbose output
-pytest tests/test_agora.py  # Specific test file
-pytest --cov           # Coverage report
+python -m pytest tests/ -v
 ```
 
 ### Frontend Tests (to be implemented)
@@ -272,7 +264,6 @@ SELECT * FROM users;   # Query data
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk frontend key | `pk_test_xxx` |
 | `CLERK_SECRET_KEY` | ✅ | Clerk backend key | `sk_test_xxx` |
 | `DATABASE_URL` | ✅ | PostgreSQL connection | `postgresql://user:pass@localhost/voicehire_db` |
-| `REDIS_URL` | ✅ | Redis connection | `redis://localhost:6379` |
 | `AGORA_APP_ID` | ✅ | Agora app ID | `xxx` |
 | `AGORA_APP_CERTIFICATE` | ✅ | Agora certificate | `xxx` |
 | `OPENAI_API_KEY` | ✅ | OpenAI API key | `sk-xxx` |
@@ -299,7 +290,7 @@ SELECT * FROM users;   # Query data
 
 ## Performance Tips
 
-1. **Database Queries**: Use Prisma's `select()` to only fetch needed fields
+1. **Database Queries**: Use SQLAlchemy's typed models and `select()` expressions
 2. **API Calls**: Implement request debouncing on the frontend
 3. **State Management**: Use Zustand for efficient state updates
 4. **Component Rendering**: Use React.memo() for expensive components
@@ -309,7 +300,6 @@ SELECT * FROM users;   # Query data
 
 - [Next.js Docs](https://nextjs.org/docs)
 - [FastAPI Docs](https://fastapi.tiangolo.com/)
-- [Prisma Docs](https://www.prisma.io/docs)
 - [Agora SDK Docs](https://docs.agora.io/en/)
 - [Clerk Docs](https://clerk.com/docs)
 - [Tailwind CSS](https://tailwindcss.com/docs)

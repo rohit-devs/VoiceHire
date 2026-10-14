@@ -5,10 +5,11 @@ User Management Endpoints
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.auth import get_current_user
+from app.models import User
 
 router = APIRouter()
 
@@ -53,12 +54,8 @@ async def get_current_user_profile(
     Get current authenticated user profile.
     Requires valid Clerk JWT.
     """
-    result = await db.execute(
-        text("SELECT id, email, first_name, last_name FROM users WHERE id = :id"),
-        {"id": user["id"]}
-    )
-    row = result.first()
-    if not row:
+    row = await db.scalar(select(User).where(User.id == user["id"]))
+    if row is None:
         raise HTTPException(status_code=404, detail="User not found")
     return UserResponse(
         id=row.id,
@@ -82,18 +79,12 @@ async def update_current_user(
     """
     Update current user profile.
     """
-    await db.execute(
-        text("UPDATE users SET first_name = :first_name, last_name = :last_name WHERE id = :id"),
-        {"first_name": update_data.first_name, "last_name": update_data.last_name, "id": user["id"]}
-    )
-    await db.commit()
-    result = await db.execute(
-        text("SELECT id, email, first_name, last_name FROM users WHERE id = :id"),
-        {"id": user["id"]}
-    )
-    row = result.first()
-    if not row:
+    row = await db.scalar(select(User).where(User.id == user["id"]))
+    if row is None:
         raise HTTPException(status_code=404, detail="User not found")
+    row.first_name = update_data.first_name
+    row.last_name = update_data.last_name
+    await db.commit()
     return UserResponse(
         id=row.id,
         email=row.email,

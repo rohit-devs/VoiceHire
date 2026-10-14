@@ -10,7 +10,7 @@ from app.auth import _DEMO_USER, _upsert_user
 @pytest.mark.asyncio
 async def test_upsert_user_fails_when_database_write_fails():
     db = AsyncMock()
-    db.execute.side_effect = SQLAlchemyError("database unavailable")
+    db.scalar.side_effect = SQLAlchemyError("database unavailable")
 
     with pytest.raises(HTTPException) as error:
         await _upsert_user(_DEMO_USER, db)

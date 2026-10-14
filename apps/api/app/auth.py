@@ -12,12 +12,13 @@ from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, jwk, JWTError
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db, async_session
+from app.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -96,25 +97,24 @@ async def _upsert_user(user_info: dict, db: Optional[AsyncSession] = None) -> di
         db = async_session()
         own_session = True
     try:
-        await db.execute(
-            text(
-                """INSERT INTO users (id, email, clerk_id, first_name, last_name, avatar_url)
-                   VALUES (:id, :email, :clerk_id, :first_name, :last_name, :avatar_url)
-                   ON CONFLICT(clerk_id) DO UPDATE SET
-                     email = EXCLUDED.email,
-                     first_name = EXCLUDED.first_name,
-                     last_name = EXCLUDED.last_name,
-                     avatar_url = EXCLUDED.avatar_url"""
-            ),
-            {
-                "id": user_info["id"],
-                "email": user_info["email"],
-                "clerk_id": user_info["clerk_id"],
-                "first_name": user_info.get("first_name"),
-                "last_name": user_info.get("last_name"),
-                "avatar_url": user_info.get("avatar_url"),
-            }
+        user = await db.scalar(
+            select(User).where(User.clerk_id == user_info["clerk_id"])
         )
+        if user is None:
+            user = User(
+                id=user_info["id"],
+                email=user_info["email"],
+                clerk_id=user_info["clerk_id"],
+                first_name=user_info.get("first_name"),
+                last_name=user_info.get("last_name"),
+                avatar_url=user_info.get("avatar_url"),
+            )
+            db.add(user)
+        else:
+            user.email = user_info["email"]
+            user.first_name = user_info.get("first_name")
+            user.last_name = user_info.get("last_name")
+            user.avatar_url = user_info.get("avatar_url")
         await db.commit()
         return user_info
     except SQLAlchemyError as exc:

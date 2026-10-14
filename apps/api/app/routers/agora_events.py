@@ -4,15 +4,15 @@ Handles voice activity detection, channel events, and other Agora callbacks.
 """
 
 import logging
-import json
 import time
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import select
 from app.database import get_db
 from app.auth import get_current_user
 from app.interview.orchestrator import InterviewOrchestrator
+from app.models import AgoraEventLog, InterviewSession
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,12 +57,11 @@ async def handle_vad_event(
         )
 
         # Look up session by agora channel
-        session = (
-            await db.execute(
-                text("SELECT id, user_id FROM interview_sessions WHERE agora_channel = :channel_name"),
-                {"channel_name": request.channel_name},
+        session = await db.scalar(
+            select(InterviewSession).where(
+                InterviewSession.agora_channel == request.channel_name
             )
-        ).first()
+        )
         session_id = session.id if session else None
 
         # Verify session ownership
@@ -70,18 +69,14 @@ async def handle_vad_event(
             raise HTTPException(status_code=403, detail="Access denied to this session")
 
         # Record VAD event in database for analytics
-        await db.execute(
-            text(
-                "INSERT INTO agora_events_log (session_id, event_type, event_data, user_uid, timestamp_ms) "
-                "VALUES (:session_id, :event_type, :event_data, :user_uid, :timestamp_ms)"
-            ),
-            {
-                "session_id": session_id,
-                "event_type": request.event_type,
-                "event_data": json.dumps({"channel_name": request.channel_name, **request.event_data}),
-                "user_uid": request.uid,
-                "timestamp_ms": int(time.time() * 1000),
-            }
+        db.add(
+            AgoraEventLog(
+                session_id=session_id,
+                event_type=request.event_type,
+                event_data={"channel_name": request.channel_name, **request.event_data},
+                user_uid=request.uid,
+                timestamp_ms=int(time.time() * 1000),
+            )
         )
         await db.commit()
         
@@ -92,8 +87,14 @@ async def handle_vad_event(
             logger.info(f"⚠️  Candidate voice activity detected on {request.channel_name}")
             
             if session:
-                await InterviewOrchestrator(str(session.id), db).handle_interruption()
-                action_taken = "interruption_handled"
+                from app.routers.interviews import orchestrators
+                existing = orchestrators.get(str(session.id))
+                if existing:
+                    await existing.handle_interruption()
+                    action_taken = "interruption_handled"
+                else:
+                    await InterviewOrchestrator(str(session.id)).handle_interruption()
+                    action_taken = "interruption_handled_no_orchestrator"
             else:
                 action_taken = "interruption_session_not_found"
         
@@ -132,12 +133,11 @@ async def handle_channel_event(
         )
 
         # Look up session by channel name for ownership verification
-        session = (
-            await db.execute(
-                text("SELECT id, user_id FROM interview_sessions WHERE agora_channel = :channel_name"),
-                {"channel_name": request.channel_name},
+        session = await db.scalar(
+            select(InterviewSession).where(
+                InterviewSession.agora_channel == request.channel_name
             )
-        ).first()
+        )
 
         if session and session.user_id != user["id"]:
             raise HTTPException(status_code=403, detail="Access denied to this session")
@@ -146,18 +146,14 @@ async def handle_channel_event(
         session_id = session.id if session else None
 
         # Record event
-        await db.execute(
-            text(
-                "INSERT INTO agora_events_log (session_id, event_type, event_data, user_uid, timestamp_ms) "
-                "VALUES (:session_id, :event_type, :event_data, :user_uid, :timestamp_ms)"
-            ),
-            {
-                "session_id": session_id,
-                "event_type": request.event_type,
-                "event_data": json.dumps({"channel_name": request.channel_name, **request.event_data}),
-                "user_uid": request.uid,
-                "timestamp_ms": int(time.time() * 1000),
-            }
+        db.add(
+            AgoraEventLog(
+                session_id=session_id,
+                event_type=request.event_type,
+                event_data={"channel_name": request.channel_name, **request.event_data},
+                user_uid=request.uid,
+                timestamp_ms=int(time.time() * 1000),
+            )
         )
         await db.commit()
         

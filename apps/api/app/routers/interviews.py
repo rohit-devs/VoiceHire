@@ -2,13 +2,12 @@
 Interview Session Management Endpoints
 """
 
-import json
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import select, update
 from typing import Optional
 from datetime import datetime
 from app.database import get_db, async_session
@@ -18,6 +17,8 @@ from app.demo_manager import demo_manager
 from app.interview import InterviewOrchestrator, SessionState, ResponseAnalyzer, ResponseAnalysis
 from app.interview.prompt_chaining import PromptChainCoordinator, QuestionGenerationRequest
 from app.config import settings
+from app.models import InterviewSession, Transcript
+from app.idempotency import cached_response, store_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,14 +32,10 @@ async def _verify_session_ownership(db: AsyncSession, session_id: str, user_id: 
     Verify that the given session exists and belongs to the given user.
     Raises HTTPException(404) if session not found, (403) if not owned.
     """
-    result = await db.execute(
-        text("SELECT user_id FROM interview_sessions WHERE id = :id"),
-        {"id": session_id}
-    )
-    row = result.first()
-    if not row:
+    session = await db.get(InterviewSession, session_id)
+    if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    if row.user_id != user_id:
+    if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied to this session")
 analyzer: Optional[ResponseAnalyzer] = None
 prompt_chain_coordinator: Optional[PromptChainCoordinator] = None
@@ -54,7 +51,7 @@ def get_analyzer() -> ResponseAnalyzer:
 def get_prompt_chain_coordinator() -> PromptChainCoordinator:
     """Get or create PromptChainCoordinator singleton"""
     global prompt_chain_coordinator
-    if prompt_chain_coordinator is None:
+    if prompt_chain_coordinator is None and settings.OPENAI_API_KEY:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         prompt_chain_coordinator = PromptChainCoordinator(openai_client=client)
@@ -143,24 +140,19 @@ async def create_interview_session(
         }
         
         # Create session in database
-        await db.execute(
-            text(
-                """
-                INSERT INTO interview_sessions (id, user_id, role, difficulty, status, current_state, agora_channel, persona, metadata)
-                VALUES (:id, :user_id, :role, :difficulty, :status, :current_state, :agora_channel, :persona, :metadata)
-                """
-            ),
-            {
-                "id": session_id,
-                "user_id": user_id,
-                "role": session_data.role,
-                "difficulty": session_data.difficulty,
-                "status": "scheduled",
-                "current_state": "intro",
-                "agora_channel": agora_channel,
-                "persona": session_data.persona,
-                "metadata": json.dumps(metadata),
-            }
+        db.add(
+            InterviewSession(
+                id=session_id,
+                user_id=user_id,
+                candidate_profile_id=session_data.candidate_profile_id,
+                role=session_data.role,
+                difficulty=session_data.difficulty,
+                status="scheduled",
+                current_state="intro",
+                agora_channel=agora_channel,
+                persona=session_data.persona,
+                metadata_json=metadata,
+            )
         )
         await db.commit()
         
@@ -183,6 +175,8 @@ async def create_interview_session(
 
 @router.get("/sessions", response_model=list[InterviewSessionResponse])
 async def list_user_sessions(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
@@ -190,12 +184,12 @@ async def list_user_sessions(
     List all interview sessions for the current user.
     """
     try:
-        result = await db.execute(
-            text(
-                "SELECT id, role, difficulty, status, current_state, agora_channel "
-                "FROM interview_sessions WHERE user_id = :user_id ORDER BY created_at DESC"
-            ),
-            {"user_id": user["id"]},
+        result = await db.scalars(
+            select(InterviewSession)
+            .where(InterviewSession.user_id == user["id"])
+            .order_by(InterviewSession.created_at.desc(), InterviewSession.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
         sessions = result.all()
         return [
@@ -226,11 +220,7 @@ async def get_interview_session(
     try:
         await _verify_session_ownership(db, session_id, user["id"])
 
-        result = await db.execute(
-            text("SELECT id, role, difficulty, status, current_state, agora_channel FROM interview_sessions WHERE id = :id"),
-            {"id": session_id}
-        )
-        session = result.first()
+        session = await db.get(InterviewSession, session_id)
         
         if not session:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
@@ -254,6 +244,9 @@ async def get_interview_session(
 @router.post("/sessions/{session_id}/start")
 async def start_interview(
     session_id: str,
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", max_length=255
+    ),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
@@ -268,12 +261,12 @@ async def start_interview(
     """
     try:
         await _verify_session_ownership(db, session_id, user["id"])
+        operation = f"session.start:{session_id}"
+        cached = await cached_response(db, user["id"], operation, idempotency_key)
+        if cached is not None:
+            return cached
         # Verify session exists and is in 'scheduled' state
-        result = await db.execute(
-            text("SELECT id, status, current_state FROM interview_sessions WHERE id = :id"),
-            {"id": session_id}
-        )
-        session = result.first()
+        session = await db.get(InterviewSession, session_id)
         
         if not session:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
@@ -284,18 +277,33 @@ async def start_interview(
                 detail=f"Cannot start interview: current status is {session.status}"
             )
         
-        # Get prompt chain coordinator
+        # Get prompt chain coordinator (may be None if no OpenAI key)
         coordinator = get_prompt_chain_coordinator()
+        if not coordinator:
+            # Create a coordinator without LLM client — it still has fallback questions
+            coordinator = PromptChainCoordinator(openai_client=None)
         
         # Initialize orchestrator for this session
         orchestrator = InterviewOrchestrator(session_id, db, blueprint=None, prompt_coordinator=coordinator)
         await orchestrator.initialize(initial_state=SessionState.INTRO)
         orchestrators[session_id] = orchestrator
         
+        first_question = await orchestrator.generate_next_question("")
+
         # Update session status to 'active'
         await db.execute(
-            text("UPDATE interview_sessions SET status = :status WHERE id = :id"),
-            {"status": "active", "id": session_id}
+            update(InterviewSession)
+            .where(InterviewSession.id == session_id)
+            .values(status="active", started_at=datetime.utcnow())
+        )
+        response = {
+            "status": "started",
+            "session_id": session_id,
+            "current_state": "intro",
+            "question_text": first_question,
+        }
+        await store_response(
+            db, user["id"], operation, idempotency_key, session_id, response
         )
         await db.commit()
         
@@ -308,14 +316,20 @@ async def start_interview(
                 "timestamp_ms": int(datetime.utcnow().timestamp() * 1000)
             }
         )
+        if first_question:
+            await connection_manager.broadcast_transcript(
+                session_id=session_id,
+                message={
+                    "type": "transcript",
+                    "speaker": "interviewer",
+                    "text": first_question,
+                    "timestamp_ms": int(datetime.utcnow().timestamp() * 1000),
+                },
+            )
         
         logger.info(f"✅ Interview started for session {session_id}")
         
-        return {
-            "status": "started",
-            "session_id": session_id,
-            "current_state": "intro"
-        }
+        return response
         
     except HTTPException:
         raise
@@ -328,6 +342,9 @@ async def start_interview(
 @router.post("/sessions/{session_id}/end")
 async def end_interview(
     session_id: str,
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", max_length=255
+    ),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
@@ -341,6 +358,10 @@ async def end_interview(
     """
     try:
         await _verify_session_ownership(db, session_id, user["id"])
+        operation = f"session.end:{session_id}"
+        cached = await cached_response(db, user["id"], operation, idempotency_key)
+        if cached is not None:
+            return cached
         # Get orchestrator for this session
         orchestrator = orchestrators.get(session_id)
         if orchestrator:
@@ -348,8 +369,13 @@ async def end_interview(
         
         # Update session status to 'completed'
         await db.execute(
-            text("UPDATE interview_sessions SET status = :status WHERE id = :id"),
-            {"status": "completed", "id": session_id}
+            update(InterviewSession)
+            .where(InterviewSession.id == session_id)
+            .values(status="completed", ended_at=datetime.utcnow())
+        )
+        response = {"status": "ended", "session_id": session_id}
+        await store_response(
+            db, user["id"], operation, idempotency_key, session_id, response
         )
         await db.commit()
         
@@ -359,10 +385,7 @@ async def end_interview(
         
         logger.info(f"✅ Interview ended for session {session_id}")
         
-        return {
-            "status": "ended",
-            "session_id": session_id
-        }
+        return response
         
     except Exception as e:
         logger.error(f"❌ Failed to end interview {session_id}: {e}")
@@ -392,19 +415,13 @@ async def add_transcript(
         timestamp_ms = message.timestamp_ms or int(datetime.utcnow().timestamp() * 1000)
         
         # Record transcript in database
-        await db.execute(
-            text(
-                """
-                INSERT INTO transcripts (session_id, speaker, message, timestamp_ms)
-                VALUES (:session_id, :speaker, :message, :timestamp_ms)
-                """
-            ),
-            {
-                "session_id": session_id,
-                "speaker": message.speaker,
-                "message": message.message,
-                "timestamp_ms": timestamp_ms
-            }
+        db.add(
+            Transcript(
+                session_id=session_id,
+                speaker=message.speaker,
+                message=message.message,
+                timestamp_ms=timestamp_ms,
+            )
         )
         await db.commit()
         
@@ -500,11 +517,7 @@ async def get_session_state(
             }
         
         # Fall back to database
-        result = await db.execute(
-            text("SELECT current_state FROM interview_sessions WHERE id = :id"),
-            {"id": session_id}
-        )
-        session = result.first()
+        session = await db.get(InterviewSession, session_id)
         
         if not session:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
@@ -632,6 +645,11 @@ async def generate_next_question(
         
         # Get prompt chain coordinator
         coordinator = get_prompt_chain_coordinator()
+        if not coordinator:
+            raise HTTPException(
+                status_code=503,
+                detail="OpenAI API key not configured. Cannot generate questions."
+            )
         
         # Build generation request with orchestrator context
         request = QuestionGenerationRequest(
@@ -678,4 +696,3 @@ async def generate_next_question(
     except Exception as e:
         logger.error(f"❌ Failed to generate question for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate question: {str(e)}")
-

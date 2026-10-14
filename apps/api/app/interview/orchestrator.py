@@ -8,11 +8,18 @@ import json
 from enum import Enum
 from typing import Optional, Dict, Any
 from datetime import datetime
-from sqlalchemy import text
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from app.models import AgoraEventLog, InterviewSession
 
 logger = logging.getLogger(__name__)
+
+
+# Import here to avoid circular dependency at module load time
+async def _get_async_session():
+    from app.database import async_session
+    return async_session()
 
 
 class SessionState(str, Enum):
@@ -73,13 +80,14 @@ class InterviewOrchestrator:
         SessionState.CLOSING: [SessionState.COMPLETED],
     }
 
-    def __init__(self, session_id: str, db: AsyncSession, blueprint: Optional[Dict[str, Any]] = None, prompt_coordinator: Optional[Any] = None):
+    def __init__(self, session_id: str, db: Optional[AsyncSession] = None, blueprint: Optional[Dict[str, Any]] = None, prompt_coordinator: Optional[Any] = None):
         """
         Initialize orchestrator for a session.
         
         Args:
             session_id: Interview session ID
-            db: AsyncSession for database operations
+            db: Optional AsyncSession for initialization. Subsequent DB
+                  operations create fresh sessions via async_session().
             blueprint: Optional interview blueprint with personalization context
             prompt_coordinator: Optional PromptChainCoordinator for adaptive question generation
         """
@@ -112,11 +120,9 @@ class InterviewOrchestrator:
         """
         try:
             # Verify session exists
-            result = await self.db.execute(
-                text("SELECT id, current_state, difficulty, metadata FROM interview_sessions WHERE id = :id"),
-                {"id": self.session_id}
+            session = await self.db.scalar(
+                select(InterviewSession).where(InterviewSession.id == self.session_id)
             )
-            session = result.first()
             
             if not session:
                 logger.warning(f"Session {self.session_id} not found, starting with {initial_state}")
@@ -126,9 +132,13 @@ class InterviewOrchestrator:
                 self.difficulty_level = {"easy": 1, "medium": 2, "hard": 3}.get(session.difficulty, 2)
                 
                 # Extract blueprint context from session metadata if available
-                if session.metadata:
+                if session.metadata_json:
                     try:
-                        metadata = json.loads(session.metadata) if isinstance(session.metadata, str) else session.metadata
+                        metadata = (
+                            json.loads(session.metadata_json)
+                            if isinstance(session.metadata_json, str)
+                            else session.metadata_json
+                        )
                         target_context = metadata.get("target_context", {})
                         self.candidate_name = target_context.get("candidate_name", "Candidate")
                         self.target_role = target_context.get("target_role", session.role)
@@ -197,21 +207,26 @@ class InterviewOrchestrator:
         )
         self.state_history.append(metadata)
 
-        # Update database
+        # Update database — use a fresh session because self.db may be closed
+        # if the orchestrator outlived its original request scope.
+        db = await _get_async_session()
         try:
-            await self.db.execute(
-                text("UPDATE interview_sessions SET current_state = :state WHERE id = :id"),
-                {"state": target_state.value, "id": self.session_id},
+            await db.execute(
+                update(InterviewSession)
+                .where(InterviewSession.id == self.session_id)
+                .values(current_state=target_state.value)
             )
-            await self.db.commit()
+            await db.commit()
             logger.info(
                 f"✅ State transition: {previous_state} → {target_state} "
                 f"(reason: {reason}, Q#{self.question_count})"
             )
         except Exception as e:
             logger.error(f"❌ Failed to update state in database: {e}")
-            await self.db.rollback()
+            await db.rollback()
             return False
+        finally:
+            await db.close()
 
         # Broadcast state change via WebSocket
         try:
@@ -372,19 +387,22 @@ class InterviewOrchestrator:
                 }
             )
             
-            # Log to database
-            await self.db.execute(
-                text(
-                    "INSERT INTO agora_events_log (session_id, event_type, event_data) "
-                    "VALUES (:session_id, :event_type, :event_data)"
-                ),
-                {
-                    "session_id": self.session_id,
-                    "event_type": "interruption",
-                    "event_data": "Candidate spoke while AI was speaking"
-                }
-            )
-            await self.db.commit()
+            # Log to database — use a fresh session since self.db may be closed
+            db = await _get_async_session()
+            try:
+                db.add(
+                    AgoraEventLog(
+                        session_id=self.session_id,
+                        event_type="interruption",
+                        event_data={"detail": "Candidate spoke while AI was speaking"},
+                    )
+                )
+                await db.commit()
+            except Exception as db_exc:
+                logger.error(f"❌ Failed to log interruption event: {db_exc}")
+                await db.rollback()
+            finally:
+                await db.close()
         except Exception as e:
             logger.error(f"❌ Failed to handle interruption: {e}")
 

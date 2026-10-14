@@ -9,6 +9,8 @@
     "lint": "pylint app/",
     "format": "black app/",
     "type-check": "mypy app/",
-    "test": "python -m pytest tests/ -v"
+    "test": "python -m pytest tests/ -v",
+    "db:migrate": "alembic upgrade head",
+    "db:seed:demo": "python -m app.seed_demo"
   }
 }

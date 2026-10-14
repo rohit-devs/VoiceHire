@@ -13,12 +13,18 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - Demo-mode banner labels sample scores as non-real measurements in the frontend.
 - The pnpm workspace discovers the web, API script package, database, and prompts workspaces.
 - Frontend `apps/web/lib` files are tracked; a targeted scan of all six files found no matching hardcoded secret patterns.
+- SQLAlchemy models and Alembic migrations are the backend schema authority; the web app does not import Prisma Client, so the unused Prisma package and duplicate handwritten SQL schema were removed.
+- The initial Alembic migration creates the schema on fresh SQLite, downgrades cleanly, and reports no model drift with `alembic check`.
+- Backend persistence paths use SQLAlchemy models/typed statements; tests cover schema constraints, idempotency replay, and initialization on an empty database.
+- Redis wiring was removed because no API runtime code used it; interview orchestration remains in-process.
+- The demo seed command refuses to run outside demo mode.
 
 ### Partial
 
 - Interview setup, session APIs, report/evaluation endpoints, resume/JD handling, coaching, and Agora integration code exist, but an end-to-end interview against real external services was not exercised.
 - Dashboard, coaching, reports, and performance history include deterministic or generated sample values in the mock service. They are now visibly marked as demo/sample data; they are not real user measurements.
-- SQLite is verified locally; the PostgreSQL path is present but not exercised.
+- SQLite migration setup and teardown are verified locally. PostgreSQL migration remains unverified: Docker Compose cannot reach the Docker Desktop Linux engine (`/_ping` returns HTTP 500). A Windows PostgreSQL service is running locally, but it was not treated as the isolated Compose/pgvector test database.
+- Existing databases from the old handwritten schema are not adopted automatically; they need a backup and a separate data-preserving migration plan.
 - Clerk auth, Agora voice, and OpenAI analysis code are present, but real-credential paths were not exercised.
 
 ### Broken
@@ -52,6 +58,10 @@ Successful commands:
 | `python -m pytest tests/ -v` (from `apps/api`, clean Python 3.12 venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
 | `pnpm test` (repository root, API venv on `PATH`) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
 | `python -m pytest tests/ -v` (from `apps/api`, project venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
+| `python -m pytest tests/ -v` (from `apps/api`, after schema work) | Exit 0; 16 passed, 19 warnings. |
+| `python -m alembic upgrade head` (fresh SQLite database) | Exit 0; initial revision `e7f663ed59d9` applied. |
+| `python -m alembic check` (migrated SQLite database) | Exit 0; `No new upgrade operations detected.` |
+| `python -m alembic downgrade base` (fresh SQLite database) | Exit 0; initial revision downgraded cleanly. |
 | `git diff --check` | Exit 0. |
 | `git check-ignore -v apps/web/lib apps/web/lib/utils.ts` | Exit 1 as expected: neither path is ignored after the root-anchored ignore-rule fix. |
 | Secret-pattern scan of `apps/web/lib` | Scanned six files; no matching hardcoded secret patterns found. |
@@ -73,9 +83,12 @@ Known failures and caveats:
 - The installed `aioredis==2.0.1` was tested on Python 3.12 and failed to import with `ModuleNotFoundError: No module named 'distutils'`. It was removed from the manifest; the already-declared `redis` package's `redis.asyncio` import succeeds.
 - A clean Python 3.12 environment was install-tested. Python 3.11 could not be tested locally because that interpreter is unavailable.
 - Full live-service flows remain blocked by the credentials/services noted above.
+- `docker compose up -d postgres` and `docker compose ps` could not communicate with Docker Desktop (`/_ping` or the container-list API returned HTTP 500), so the PostgreSQL/pgvector migration gate has not passed. Do not treat the locally running Windows PostgreSQL service as a substitute for the Compose database without confirming its ownership and configuration.
 
 ## Remaining
 
 - Resolve backend mypy and Pylint findings without disabling checks.
 - Run the added pull-request workflow on GitHub and address any environment-specific failures.
 - Add real-service end-to-end coverage when credentials and services are available.
+- Retry `docker compose up -d postgres` and `alembic upgrade head` against the Compose PostgreSQL/pgvector service when Docker Desktop is healthy.
+- Plan an explicit, data-preserving adoption migration before upgrading any pre-existing database created by the removed handwritten schema.

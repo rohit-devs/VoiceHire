@@ -17,7 +17,8 @@ voicehire/
 │       ├── app/
 │       │   ├── main.py         # FastAPI app entry point
 │       │   ├── config.py       # Settings and configuration
-│       │   ├── database.py     # Database connection and setup
+│       │   ├── database.py     # Database connection and migration setup
+│       │   ├── models.py       # Authoritative SQLAlchemy schema
 │       │   ├── routers/        # API route handlers
 │       │   │   ├── agora.py    # Agora RTC tokens & events
 │       │   │   ├── interviews.py # Interview session management
@@ -26,11 +27,8 @@ voicehire/
 │       │   │   └── health.py   # Health checks
 │       │   └── models/         # SQLAlchemy ORM models
 │       └── pyproject.toml      # Python dependencies
+├── apps/api/alembic/           # Versioned SQLAlchemy schema migrations
 ├── packages/
-│   ├── database/               # Prisma schema & migrations
-│   │   ├── prisma/
-│   │   │   └── schema.prisma   # Prisma ORM schema
-│   │   └── package.json
 │   └── prompts/                # Version-controlled prompt configs (YAML/JSON)
 │       ├── interviewer.yaml    # Master interviewer system prompt
 │       └── evaluator.yaml      # Evaluation agent prompt
@@ -45,8 +43,7 @@ voicehire/
 
 - ✅ **Monorepo Setup**: pnpm workspaces configured
 - ✅ **Environment Configuration**: `.env.example` with all required secrets
-- ✅ **Database Schema**: PostgreSQL with pgvector for embeddings
-- ✅ **Prisma ORM**: Complete schema with migrations
+- ✅ **Database Schema**: SQLAlchemy models with Alembic migrations (SQLite/PostgreSQL)
 - ✅ **FastAPI Backend**: Scaffolded with core routers
 - ✅ **Next.js Frontend**: Initialized with TypeScript & Tailwind
 - ✅ **Authentication**: Clerk integration prepared
@@ -56,8 +53,8 @@ voicehire/
 | File | Purpose |
 |------|---------|
 | `pyproject.toml` | Python dependencies (FastAPI, SQLAlchemy, Pydantic v2) |
-| `packages/database/prisma/schema.prisma` | ORM schema with all tables |
-| `databases/schema.sql` | Raw PostgreSQL schema with indexes |
+| `apps/api/app/models.py` | Authoritative SQLAlchemy schema |
+| `apps/api/alembic/` | Versioned database migrations |
 | `apps/api/app/config.py` | Centralized configuration (secrets via env vars) |
 | `.env.example` | Template for all required environment variables |
 
@@ -127,8 +124,7 @@ See Phase 2 in action instantly:
 - **Node.js** 18+
 - **Python** 3.11+
 - **pnpm** (install via `npm install -g pnpm`)
-- **PostgreSQL** 14+ with pgvector extension
-- **Redis** (for session state)
+- **PostgreSQL** with pgvector, or SQLite for local demo
 
 ### Installation
 
@@ -148,17 +144,11 @@ See Phase 2 in action instantly:
    # - OpenAI API key
    ```
 
-3. **Initialize Database**
-   ```bash
-   cd packages/database
-   pnpm db:push
-   pnpm db:seed  # (optional, when available)
-   ```
-
-4. **Install Python Dependencies** (for backend)
+3. **Install API dependencies and initialize database**
    ```bash
    cd apps/api
-   pip install -e .
+   python -m pip install -e ".[dev]"
+   alembic upgrade head
    ```
 
 ### Development
@@ -210,7 +200,7 @@ python -m uvicorn app.main:app --reload --port 8000
 - **job_descriptions** - JD embeddings for RAG-based personalization
 - **coaching_plans** - 7-day improvement plans with progress tracking
 
-All tables support soft deletes, timestamps (created_at, updated_at), and JSONB for flexible data.
+Tables use foreign keys, database constraints, indexes, and creation/update timestamps. JSON values use portable SQLAlchemy JSON columns; job-description embeddings use pgvector on PostgreSQL. The web app does not use Prisma Client, so the unused Prisma schema and duplicate SQL schema were removed. Redis is not used by the API.
 
 ## 📚 Documentation
 
@@ -230,7 +220,7 @@ All tables support soft deletes, timestamps (created_at, updated_at), and JSONB 
 ### Backend
 - **Framework**: FastAPI 0.109+ with async/await
 - **Database**: PostgreSQL 14+ with pgvector extension
-- **ORM**: SQLAlchemy 2.0 async + Prisma (complementary)
+- **ORM**: SQLAlchemy 2.0 async + Alembic
 - **Auth**: Clerk (JWT tokens)
 - **Real-time**: WebSocket for transcript streaming
 - **Voice**: Agora RTC SDK for bidirectional audio
@@ -308,7 +298,6 @@ For issues or questions:
 - **Pydantic v2** for validation
 - **SQLAlchemy 2.0** with asyncio
 - **PostgreSQL** with pgvector for embeddings
-- **Redis** for session state
 - **OpenAI GPT-4o-mini** for AI reasoning
 - **Agora Agents SDK** for real-time voice
 

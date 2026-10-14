@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone script to initialize the database.
-Works with PostgreSQL (via schema.sql) or SQLite (auto-created).
+Applies pending Alembic migrations for the configured database.
 """
 import asyncio
 from app.database import init_db, close_db
