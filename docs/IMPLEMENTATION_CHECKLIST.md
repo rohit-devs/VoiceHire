@@ -1,20 +1,80 @@
-# Implementation Checklist
+# Implementation Checklist and Baseline
 
-## Done
+Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 
-- Created and switched to the requested `feat/finish-voicehire` branch without discarding the existing worktree edits.
-- Reviewed the auth persistence path and fixed it so a failed user upsert returns an explicit service-unavailable error instead of treating an unpersisted identity as authenticated.
-- Added a regression test for database write failures.
-- Declared `aiosqlite==0.19.0`: the configured default and test database URLs use `sqlite+aiosqlite`, but the backend manifest did not include its driver.
-- Manually exercised the auth persistence failure path with an async mock; it raised 503, rolled back, and did not return a user.
-- Frontend TypeScript check passed: `pnpm type-check` from `apps/web`.
-- `git diff --check` passed.
+## Feature inventory
 
-## Blocked
+### Implemented and verified
 
-- API tests are blocked because the project virtual environment has no `pytest`, and system Python is missing the declared `pytest-asyncio` test dependency. Installing the test dependency also failed because `files.pythonhosted.org` timed out; the newly declared SQLite driver is not installed in the current environment either.
+- Next.js App Router pages type-check, lint, build, and serve the home page.
+- FastAPI starts against local SQLite. `/api/health/ready`, `/api/health/live`, and `/` return HTTP 200.
+- API root and `/healthz` report the configured demo/live mode. Tests cover both values.
+- API tests cover demo auth behavior, session ownership, and failed user persistence.
+- Demo-mode banner labels sample scores as non-real measurements in the frontend.
+- The pnpm workspace discovers the web, API script package, database, and prompts workspaces.
+- Frontend `apps/web/lib` files are tracked; a targeted scan of all six files found no matching hardcoded secret patterns.
+
+### Partial
+
+- Interview setup, session APIs, report/evaluation endpoints, resume/JD handling, coaching, and Agora integration code exist, but an end-to-end interview against real external services was not exercised.
+- Dashboard, coaching, reports, and performance history include deterministic or generated sample values in the mock service. They are now visibly marked as demo/sample data; they are not real user measurements.
+- SQLite is verified locally; the PostgreSQL path is present but not exercised.
+- Clerk auth, Agora voice, and OpenAI analysis code are present, but real-credential paths were not exercised.
+
+### Broken
+
+- Backend `pnpm type-check` is not clean. The configured mypy run reports an untyped `agora_token_builder` import and a NumPy stub syntax issue under its configured Python 3.11 target. An additional run with `mypy --python-version 3.12 app/` reports 41 errors across 12 files.
+- Root `pnpm lint` is not clean: Pylint exits 28 with a 7.22/10 score. Frontend lint itself passes with two existing `<img>` optimization warnings.
+- `/api/users/register` is still a placeholder endpoint and does not persist a registration.
+
+### Missing
+
+- No full browser-to-API interview/evaluation smoke test is in place.
+- No CI result has yet been observed on GitHub; the workflow has been added locally.
+
+### Blocked by credentials or environment
+
+- Current local API reports OpenAI, Agora, Clerk, and PostgreSQL features as unavailable. Their live integrations cannot be verified without configured credentials/services.
+- Python 3.11 is not installed in this Windows environment (`py -0p` lists Python 3.12 and 3.14). CI now tests Python 3.11 and 3.12; only Python 3.12 was verified locally.
+
+## Baseline command results
+
+Successful commands:
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` (repository root) | Exit 0; all five workspace projects resolved and installed. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; two `<img>` optimization warnings in Settings and Sidebar. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 compiled and generated all 14 application routes. |
+| `python -m pip install -e ".[dev]"` (from `apps/api`, clean Python 3.12 venv) | Exit 0; installed the editable API, `aiosqlite==0.19.0`, and declared dev dependencies. |
+| `python -m pytest tests/ -v` (from `apps/api`, clean Python 3.12 venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
+| `pnpm test` (repository root, API venv on `PATH`) | Exit 0; 12 passed. |
+| `python -m pytest tests/ -v` (from `apps/api`, project venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
+| `git diff --check` | Exit 0. |
+| `git check-ignore -v apps/web/lib apps/web/lib/utils.ts` | Exit 1 as expected: neither path is ignored after the root-anchored ignore-rule fix. |
+| Secret-pattern scan of `apps/web/lib` | Scanned six files; no matching hardcoded secret patterns found. |
+| `redis.asyncio` import (Python 3.12) | Passed. |
+
+Runtime checks, with `pnpm dev` running both workspace apps:
+
+| Request | Result |
+|---|---|
+| `GET http://127.0.0.1:8000/api/health/ready` | HTTP 200, `{"status":"ready","service":"voicehire-api"}` |
+| `GET http://127.0.0.1:8000/api/health/live` | HTTP 200, `{"status":"alive","service":"voicehire-api"}` |
+| `GET http://127.0.0.1:8000/` | HTTP 200; status `running`, mode `demo`, feature flags report OpenAI/Agora/Clerk/PostgreSQL unavailable. |
+| `GET http://127.0.0.1:3000/` | HTTP 200 after the Next.js dev server finished compiling. |
+
+Known failures and caveats:
+
+- `pnpm type-check` at the repository root invokes both `tsc` and mypy and exits 2 on the backend mypy issues listed above; the required frontend-only type-check passes.
+- `pnpm lint` at the repository root exits 28 because of the existing backend Pylint baseline; the required frontend-only lint passes.
+- The installed `aioredis==2.0.1` was tested on Python 3.12 and failed to import with `ModuleNotFoundError: No module named 'distutils'`. It was removed from the manifest; the already-declared `redis` package's `redis.asyncio` import succeeds.
+- A clean Python 3.12 environment was install-tested. Python 3.11 could not be tested locally because that interpreter is unavailable.
+- Full live-service flows remain blocked by the credentials/services noted above.
 
 ## Remaining
 
-- Install the backend's declared runtime and test dependencies when package-index access is available, then rerun API tests.
-- Keep the pre-existing, unrelated worktree edits separate from the auth fix and its regression test.
+- Resolve backend mypy and Pylint findings without disabling checks.
+- Run the added pull-request workflow on GitHub and address any environment-specific failures.
+- Add real-service end-to-end coverage when credentials and services are available.

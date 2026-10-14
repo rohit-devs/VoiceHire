@@ -58,7 +58,7 @@ async def root():
     return {
         "service": "VoiceHire API",
         "status": "running",
-        "mode": "live" if settings.openai_enabled else "demo",
+        "mode": "live" if not settings.DEMO_MODE else "demo",
         "features": {
             "openai": settings.openai_enabled,
             "agora": settings.agora_enabled,
@@ -70,4 +70,4 @@ async def root():
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok", "mode": "demo" if not settings.openai_enabled else "live"}
+    return {"status": "ok", "mode": "demo" if settings.DEMO_MODE else "live"}

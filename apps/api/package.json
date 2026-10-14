@@ -8,6 +8,7 @@
     "start": "python -m uvicorn app.main:app --port 8000",
     "lint": "pylint app/",
     "format": "black app/",
-    "type-check": "mypy app/"
+    "type-check": "mypy app/",
+    "test": "python -m pytest tests/ -v"
   }
 }

@@ -6,9 +6,10 @@ import { interviewService } from "@/lib/services";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Play, Clock, CheckCircle2, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import type { CoachingPlan } from "@/types";
 
 export default function CoachPage() {
-  const [plan, setPlan] = useState<any>(null);
+  const [plan, setPlan] = useState<CoachingPlan | null>(null);
   const [activeTab, setActiveTab] = useState("plan");
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export default function CoachPage() {
 
               {/* Days */}
               <div className="space-y-3">
-                {plan.days.map((day: any) => (
+                {plan.days.map((day) => (
                   <div
                     key={day.day}
                     className={`rounded-xl border p-5 transition-all ${
@@ -119,7 +120,7 @@ export default function CoachPage() {
                 <div className="rounded-lg border border-white/10 bg-white/[0.02] p-6 mb-6">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Question</p>
                   <p className="text-base text-white leading-relaxed">
-                    "Explain how JWT authentication works and when you would use it over session-based auth."
+                    &quot;Explain how JWT authentication works and when you would use it over session-based auth.&quot;
                   </p>
                 </div>
 
@@ -154,4 +155,3 @@ export default function CoachPage() {
     </AppShell>
   );
 }
-

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { interviewService } from "@/lib/services";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { TrendingUp } from "lucide-react";
+import type { PerformanceHistory } from "@/types";
 
 type MetricKey = "overallScore" | "technical" | "communication" | "confidence" | "clarity" | "conciseness" | "fillerWords" | "speakingPace";
 
@@ -20,7 +21,7 @@ const METRICS: { key: MetricKey; label: string; color: string }[] = [
 ];
 
 export default function ProgressPage() {
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<PerformanceHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeMetric, setActiveMetric] = useState<MetricKey>("overallScore");
   const [timeRange, setTimeRange] = useState("30");

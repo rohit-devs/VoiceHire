@@ -14,10 +14,11 @@ import {
   Settings2,
   Check,
 } from "lucide-react";
+import type { InterviewConfig } from "@/types";
 
 type Step = "role" | "profile" | "jd" | "preferences" | "review";
 
-const INTERVIEW_TYPES = [
+const INTERVIEW_TYPES: { value: InterviewConfig["interviewType"]; label: string; desc: string }[] = [
   { value: "technical", label: "Technical", desc: "Coding, architecture, and system design" },
   { value: "hr", label: "HR", desc: "Culture fit, experience, and soft skills" },
   { value: "behavioral", label: "Behavioral", desc: "Past experiences and situational questions" },
@@ -25,14 +26,14 @@ const INTERVIEW_TYPES = [
   { value: "system_design", label: "System Design", desc: "Large-scale distributed systems" },
 ];
 
-const PERSONAS = [
+const PERSONAS: { value: InterviewConfig["persona"]; label: string; desc: string }[] = [
   { value: "friendly_founder", label: "Friendly Startup Founder", desc: "Warm, encouraging, startup-focused" },
   { value: "technical_lead", label: "Deep Technical Lead", desc: "Rigorous, detail-oriented, technical" },
   { value: "hr_recruiter", label: "HR Recruiter", desc: "Professional, structured, people-focused" },
   { value: "stress_interviewer", label: "Stress Interviewer", desc: "Challenging, high-pressure, adaptive" },
 ];
 
-const DIFFICULTIES = [
+const DIFFICULTIES: { value: InterviewConfig["difficulty"]; label: string; desc: string }[] = [
   { value: "easy", label: "Easy", desc: "Foundational concepts" },
   { value: "medium", label: "Medium", desc: "Practical application" },
   { value: "hard", label: "Hard", desc: "Advanced scenarios" },
@@ -237,7 +238,7 @@ export default function NewInterviewPage() {
                     {INTERVIEW_TYPES.map((type) => (
                       <button
                         key={type.value}
-                        onClick={() => updateConfig({ interviewType: type.value as any })}
+                        onClick={() => updateConfig({ interviewType: type.value })}
                         className={`rounded-lg border p-4 text-left transition-all ${
                           config.interviewType === type.value
                             ? "border-violet-500/50 bg-violet-500/10"
@@ -366,7 +367,7 @@ export default function NewInterviewPage() {
                     {PERSONAS.map((p) => (
                       <button
                         key={p.value}
-                        onClick={() => updateConfig({ persona: p.value as any })}
+                        onClick={() => updateConfig({ persona: p.value })}
                         className={`rounded-lg border p-4 text-left transition-all ${
                           config.persona === p.value
                             ? "border-violet-500/50 bg-violet-500/10"
@@ -386,7 +387,7 @@ export default function NewInterviewPage() {
                     {DIFFICULTIES.map((d) => (
                       <button
                         key={d.value}
-                        onClick={() => updateConfig({ difficulty: d.value as any })}
+                        onClick={() => updateConfig({ difficulty: d.value })}
                         className={`rounded-lg border p-3 text-center transition-all ${
                           config.difficulty === d.value
                             ? "border-violet-500/50 bg-violet-500/10"

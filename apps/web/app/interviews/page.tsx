@@ -5,9 +5,10 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { interviewService } from "@/lib/services";
 import { Search, ChevronRight, Clock, Star } from "lucide-react";
+import type { InterviewConfig } from "@/types";
 
 export default function InterviewsPage() {
-  const [interviews, setInterviews] = useState<any[]>([]);
+  const [interviews, setInterviews] = useState<InterviewConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -19,12 +20,6 @@ export default function InterviewsPage() {
   const filtered = interviews.filter((i) =>
     i.role.toLowerCase().includes(search.toLowerCase())
   );
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-emerald-400";
-    if (score >= 60) return "text-amber-400";
-    return "text-rose-400";
-  };
 
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
@@ -99,8 +94,7 @@ export default function InterviewsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <p className={`text-lg font-bold ${getScoreColor(82)}`}>82</p>
-                    <p className="text-[10px] text-muted-foreground">/100</p>
+                    <p className="text-xs text-muted-foreground">Score unavailable</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                 </div>

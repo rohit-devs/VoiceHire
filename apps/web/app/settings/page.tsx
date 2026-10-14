@@ -12,11 +12,12 @@ import {
   Shield,
   Save,
   MessageSquare,
+  type LucideIcon,
 } from "lucide-react";
 
 type Tab = "profile" | "interview" | "voice" | "notifications" | "appearance" | "privacy" | "account";
 
-const TABS: { id: Tab; label: string; icon: any }[] = [
+const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "profile", label: "Profile", icon: User },
   { id: "interview", label: "Interview Preferences", icon: MessageSquare },
   { id: "voice", label: "Voice Settings", icon: Mic },

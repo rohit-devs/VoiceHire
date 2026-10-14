@@ -47,7 +47,8 @@ export interface InterviewConfig {
   interviewerType?: string;
   resume?: Resume;
   jobDescription?: JobDescription;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+  agoraChannel?: string;
   createdAt: string;
 }
 

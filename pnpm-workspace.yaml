@@ -1,7 +1,6 @@
 packages:
-  - apps/web
-  - packages/database
-  - packages/prompts
+  - apps/*
+  - packages/*
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true

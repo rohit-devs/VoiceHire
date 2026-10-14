@@ -7,11 +7,12 @@ import { AppShell } from "@/components/layout/AppShell";
 import { interviewService } from "@/lib/services";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 import { ArrowRight, Lightbulb } from "lucide-react";
+import type { CommunicationFingerprint } from "@/types";
 
 export default function FingerprintPage() {
   const params = useParams();
   const interviewId = params.id as string;
-  const [fingerprint, setFingerprint] = useState<any>(null);
+  const [fingerprint, setFingerprint] = useState<CommunicationFingerprint | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,14 +34,19 @@ export default function FingerprintPage() {
 
   if (!fingerprint) return null;
 
-  const radarData = [
-    { metric: "Clarity", value: fingerprint.clarity, fullMark: 100 },
-    { metric: "Conciseness", value: fingerprint.conciseness, fullMark: 100 },
-    { metric: "Speaking Pace", value: fingerprint.speakingPace, fullMark: 180 },
-    { metric: "Confidence", value: fingerprint.confidence, fullMark: 100 },
-    { metric: "Filler Control", value: fingerprint.fillerControl, fullMark: 100 },
-    { metric: "Answer Structure", value: fingerprint.answerStructure, fullMark: 100 },
+  const fingerprintMetrics = [
+    { key: "clarity", label: "Clarity", value: fingerprint.clarity, fullMark: 100 },
+    { key: "conciseness", label: "Conciseness", value: fingerprint.conciseness, fullMark: 100 },
+    { key: "speakingPace", label: "Speaking Pace", value: fingerprint.speakingPace, fullMark: 180 },
+    { key: "confidence", label: "Confidence", value: fingerprint.confidence, fullMark: 100 },
+    { key: "fillerControl", label: "Filler Control", value: fingerprint.fillerControl, fullMark: 100 },
+    { key: "answerStructure", label: "Answer Structure", value: fingerprint.answerStructure, fullMark: 100 },
   ];
+  const radarData = fingerprintMetrics.map(({ label, value, fullMark }) => ({
+    metric: label,
+    value,
+    fullMark,
+  }));
 
   return (
     <AppShell>
@@ -89,7 +95,7 @@ export default function FingerprintPage() {
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
                 <h3 className="text-sm font-semibold text-white mb-4">Metric Details</h3>
                 <div className="space-y-3">
-                  {Object.entries(fingerprint).map(([key, value]: [string, any]) => (
+                  {fingerprintMetrics.map(({ key, value }) => (
                     <div key={key} className="space-y-1.5">
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-300 capitalize">{key.replace(/([A-Z])/g, " $1")}</span>

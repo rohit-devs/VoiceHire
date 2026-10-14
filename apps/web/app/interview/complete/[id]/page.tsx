@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { interviewService } from "@/lib/services";
 import { Loader2, BarChart3, ArrowRight } from "lucide-react";
+import type { EvaluationReport } from "@/types";
 
 export default function InterviewCompletePage() {
   const router = useRouter();
@@ -12,7 +13,7 @@ export default function InterviewCompletePage() {
   const interviewId = params.id as string;
   const [stage, setStage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [evaluation, setEvaluation] = useState<any>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationReport | null>(null);
 
   const stages = [
     "Analyzing transcript...",
@@ -33,7 +34,7 @@ export default function InterviewCompletePage() {
       });
     }, 1200);
     return () => clearInterval(interval);
-  }, []);
+  }, [stages.length]);
 
   useEffect(() => {
     if (stage >= stages.length - 1 && !evaluation) {
@@ -44,7 +45,7 @@ export default function InterviewCompletePage() {
       }, 800);
       return () => clearTimeout(timer);
     }
-  }, [stage, evaluation, interviewId]);
+  }, [stage, evaluation, interviewId, stages.length]);
 
   if (loading) {
     return (
