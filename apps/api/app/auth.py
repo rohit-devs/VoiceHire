@@ -13,6 +13,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, jwk, JWTError
 import httpx
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -116,12 +117,13 @@ async def _upsert_user(user_info: dict, db: Optional[AsyncSession] = None) -> di
         )
         await db.commit()
         return user_info
-    except Exception as exc:
-        if not own_session:
-            await db.rollback()
-        logger.warning(f"Failed to upsert user {user_info['id']}: {exc}")
-        # Return the info even if DB upsert failed — caller can still proceed
-        return user_info
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("Failed to upsert user %s", user_info["id"])
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User persistence unavailable",
+        ) from exc
     finally:
         if own_session:
             await db.close()
