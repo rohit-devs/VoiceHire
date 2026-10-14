@@ -47,9 +47,10 @@ Successful commands:
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; two `<img>` optimization warnings in Settings and Sidebar. |
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 compiled and generated all 14 application routes. |
+| `pnpm build` (repository root) | Exit 0; workspace build completed, including the web production build. |
 | `python -m pip install -e ".[dev]"` (from `apps/api`, clean Python 3.12 venv) | Exit 0; installed the editable API, `aiosqlite==0.19.0`, and declared dev dependencies. |
 | `python -m pytest tests/ -v` (from `apps/api`, clean Python 3.12 venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
-| `pnpm test` (repository root, API venv on `PATH`) | Exit 0; 12 passed. |
+| `pnpm test` (repository root, API venv on `PATH`) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
 | `python -m pytest tests/ -v` (from `apps/api`, project venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
 | `git diff --check` | Exit 0. |
 | `git check-ignore -v apps/web/lib apps/web/lib/utils.ts` | Exit 1 as expected: neither path is ignored after the root-anchored ignore-rule fix. |
@@ -63,12 +64,12 @@ Runtime checks, with `pnpm dev` running both workspace apps:
 | `GET http://127.0.0.1:8000/api/health/ready` | HTTP 200, `{"status":"ready","service":"voicehire-api"}` |
 | `GET http://127.0.0.1:8000/api/health/live` | HTTP 200, `{"status":"alive","service":"voicehire-api"}` |
 | `GET http://127.0.0.1:8000/` | HTTP 200; status `running`, mode `demo`, feature flags report OpenAI/Agora/Clerk/PostgreSQL unavailable. |
-| `GET http://127.0.0.1:3000/` | HTTP 200 after the Next.js dev server finished compiling. |
+| `GET http://127.0.0.1:3000/` | HTTP 200; rendered content contains the demo/sample-data label. |
 
 Known failures and caveats:
 
-- `pnpm type-check` at the repository root invokes both `tsc` and mypy and exits 2 on the backend mypy issues listed above; the required frontend-only type-check passes.
-- `pnpm lint` at the repository root exits 28 because of the existing backend Pylint baseline; the required frontend-only lint passes.
+- `pnpm type-check` at the repository root (API venv on `PATH`) invokes both `tsc` and mypy and exits 2: the configured Python 3.11 target cannot analyze the installed `agora_token_builder` package because it has no stubs, and mypy 1.7.0 cannot parse a NumPy 2.5.2 stub syntax feature. The web type-check passes.
+- `pnpm lint` at the repository root exits 28: Pylint reports 7.22/10 (472 diagnostics in the current run). Frontend lint passes with two existing `<img>` optimization warnings.
 - The installed `aioredis==2.0.1` was tested on Python 3.12 and failed to import with `ModuleNotFoundError: No module named 'distutils'`. It was removed from the manifest; the already-declared `redis` package's `redis.asyncio` import succeeds.
 - A clean Python 3.12 environment was install-tested. Python 3.11 could not be tested locally because that interpreter is unavailable.
 - Full live-service flows remain blocked by the credentials/services noted above.
