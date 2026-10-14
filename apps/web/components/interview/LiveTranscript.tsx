@@ -31,11 +31,6 @@ export function LiveTranscript({ messages }: LiveTranscriptProps) {
                 {msg.speaker === "candidate" ? "You" : "AI Interviewer"}
               </p>
               <p className="text-slate-200">{msg.text}</p>
-              {msg.metrics && (
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {msg.metrics.wpm} WPM • {msg.metrics.filler_words.length} fillers
-                </p>
-              )}
             </div>
           ))
         )}

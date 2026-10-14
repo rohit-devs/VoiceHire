@@ -10,7 +10,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - Session setup accepts candidate resume text plus a job description or category, and persists a blueprint before starting. Difficulty, duration, interview type, job context, experience level, persona, and explicit demo flag are stored and returned by the API; the web client maps the returned values on reload rather than substituting defaults.
 - Text answers are persisted before the API requests the next question. The provider receives the static, versioned interviewer rules as system content and blueprint/conversation data as user content. FakeProvider tests cover answer-grounded follow-ups, short/uncertain answers, injection attempts, and bounded question budgets.
 - Simulated interviews require explicit `is_demo`, use FakeProvider only when demo mode is enabled, return `is_demo` and `source`, mark every transcript `source="simulated"`, show a “Simulated demo” UI badge, and cannot produce evaluations or enter real report listings.
-- Fabricated demo transcripts/metrics were removed. Report generation and analytics now return explicit `insufficient data` responses instead of generating scores or zero-valued metrics without analyzed evidence.
+- Fabricated demo transcripts/metrics were removed. Evaluation reports return explicit `insufficient data`; transcript/timing analytics expose only defined evidence-based metrics, with null values and reasons when evidence is missing, and identify simulated data.
 - Frontend interview setup/live/prepare/complete screens use the API service, require pasted resume text, accept job-description text or a category, and no longer use canned questions, simulated candidate answers, guessed question totals, or hardcoded fit scores.
 - Backend regression suite passes: 22 tests, including end-to-end text interview lifecycle through ASGI with FakeProvider, demo source/evaluation isolation, injection handling, token-budget behavior, and SQLite migration checks.
 
@@ -37,6 +37,46 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js production build generated all 14 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices for modified files. |
 
+## Voice implementation and verification
+
+### Implemented
+
+- Read Agora's official RTC/Web SDK and Conversational AI documentation before implementation. Chose Agora RTC 4.x with browser Web Speech recognition/synthesis and the existing interview API; this is explicitly not an Agora Conversational AI agent. See [VOICE_ARCHITECTURE.md](./VOICE_ARCHITECTURE.md).
+- Replaced the old token paths with one server-side token module. Tokens derive the channel and UID from the owned session, are limited to interviewable states and at most one hour, and never return the App Certificate. The production `demo-` token path is removed.
+- Unified the Agora hooks with lifecycle/permission/connection states, mute controls, network quality, actual Agora audio levels, bounded reconnects, and transport cleanup. Browser STT/TTS are behind provider interfaces; missing Agora/browser support leaves text entry available and states the limitation.
+- Authenticated WebSocket connections to session ownership, replayed persisted events after `after_sequence`, and added stable message IDs, sequence numbers, server timestamps, speaker/source metadata, and duplicate-message persistence/broadcast coverage.
+- Added measured speaking duration, timed-segment WPM, language-specific filler rate, average answer length, and time remaining. Insufficient evidence yields null plus a reason. Demo metrics/events carry `source="simulated"`.
+- Removed confidence/fingerprint/legacy score fields from the report UI and report API. Reports now state that verified analysis is unavailable; the app does not infer candidate confidence, emotion, pronunciation, or vocal tone from transcript text.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` (repository root) | Exit 0; all four workspace projects already up to date. |
+| `pnpm install --frozen-lockfile` (from `apps/web`) | Exit 0; nested web lockfile up to date and esbuild postinstall completed. |
+| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Exit 0; 30 passed, 34 Pydantic deprecation warnings. Includes SQLite migration up/down, voice metrics, token authorization/expiry, duplicate transcript handling, WebSocket replay/isolation, and demo interview flow. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed (join/mute/cleanup and microphone permission denial). |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 generated all 14 application routes, with the same two image warnings. |
+
+### Revalidation on 2026-10-15
+
+- `pnpm install --frozen-lockfile` from the repository root and from `apps/web`: both exited 0; both lockfiles were already up to date.
+- `python -m pytest tests\\ -v` from `apps/api`: exit 0; 30 passed, 34 Pydantic deprecation warnings.
+- `pnpm --filter @voicehire/web type-check`: exit 0 (`tsc --noEmit`).
+- `pnpm --filter @voicehire/web lint`: exit 0; same two `<img>` optimization warnings in Settings and Sidebar.
+- `pnpm --filter @voicehire/web test`: exit 0; 2 mocked Agora hook tests passed.
+- `pnpm --filter @voicehire/web build`: exit 0; production build compiled and generated all application routes, with the same two image warnings.
+- `git diff --check`: exit 0; only Git line-ending conversion notices were printed.
+
+### Partial and blocked
+
+- The FakeProvider demo lifecycle is covered end-to-end through the API, and the room retains text input when Agora is unavailable. The browser room has not been manually exercised end-to-end.
+- Agora credentials, a supported physical/browser microphone, browser-specific SpeechRecognition behavior, and live OpenAI credentials were unavailable for this task. Therefore no live Agora connection or manual two-minute voice interview is claimed.
+- The Agora token, WebSocket replay/ownership, transcript idempotency, metrics, and mocked RTC lifecycle are covered by tests; live service connectivity, multi-device reconnect behavior, and browser STT privacy/quality remain unverified.
+- PostgreSQL/pgvector migration verification remains blocked by the Docker Desktop limitation documented in the baseline section.
+
 ## Feature inventory
 
 ### Implemented and verified
@@ -57,7 +97,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 ### Partial
 
 - The real OpenAI-backed interview flow and Agora integration are not exercised against external services. Interview session construction and FakeProvider question-generation are covered by local API tests.
-- Dashboard, coaching, reports, and performance history include deterministic or generated sample values in the mock service. They are now visibly marked as demo/sample data; they are not real user measurements.
+- Dashboard and performance history show no scores until verified metrics exist. Report and fingerprint screens explicitly explain that verified evaluation data is unavailable; some coaching sample content remains separate from interview evaluation.
 - SQLite migration setup and teardown are verified locally. PostgreSQL migration remains unverified: Docker Compose cannot reach the Docker Desktop Linux engine (`/_ping` returns HTTP 500). A Windows PostgreSQL service is running locally, but it was not treated as the isolated Compose/pgvector test database.
 - Existing databases from the old handwritten schema are not adopted automatically; they need a backup and a separate data-preserving migration plan.
 - Clerk auth, Agora voice, and OpenAI analysis code are present, but real-credential paths were not exercised.

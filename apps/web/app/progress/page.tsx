@@ -7,13 +7,12 @@ import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tool
 import { TrendingUp } from "lucide-react";
 import type { PerformanceHistory } from "@/types";
 
-type MetricKey = "overallScore" | "technical" | "communication" | "confidence" | "clarity" | "conciseness" | "fillerWords" | "speakingPace";
+type MetricKey = "overallScore" | "technical" | "communication" | "clarity" | "conciseness" | "fillerWords" | "speakingPace";
 
 const METRICS: { key: MetricKey; label: string; color: string }[] = [
   { key: "overallScore", label: "Overall Score", color: "#8b5cf6" },
   { key: "technical", label: "Technical", color: "#3b82f6" },
   { key: "communication", label: "Communication", color: "#10b981" },
-  { key: "confidence", label: "Confidence", color: "#f59e0b" },
   { key: "clarity", label: "Clarity", color: "#ec4899" },
   { key: "conciseness", label: "Conciseness", color: "#06b6d4" },
   { key: "fillerWords", label: "Filler Words", color: "#ef4444" },
@@ -38,6 +37,18 @@ export default function ProgressPage() {
       <AppShell>
         <div className="flex items-center justify-center min-h-screen">
           <div className="animate-spin h-8 w-8 border-2 border-violet-500 border-t-transparent rounded-full" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <AppShell>
+        <div className="flex min-h-screen items-center justify-center px-6">
+          <p role="status" className="max-w-lg text-center text-muted-foreground">
+            Insufficient verified interview data is available to show progress metrics.
+          </p>
         </div>
       </AppShell>
     );

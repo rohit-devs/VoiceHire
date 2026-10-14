@@ -15,7 +15,6 @@ import {
 import {
   Target,
   MessageSquare,
-  Zap,
   Eye,
   CheckCircle,
   Sparkles,
@@ -56,7 +55,6 @@ export default function DashboardPage() {
     { label: "Overall Readiness", value: data.overallReadiness, icon: Target, color: "from-violet-500 to-purple-600" },
     { label: "Technical Knowledge", value: data.technicalKnowledge, icon: Activity, color: "from-blue-500 to-cyan-600" },
     { label: "Communication", value: data.communication, icon: MessageSquare, color: "from-emerald-500 to-green-600" },
-    { label: "Confidence", value: data.confidence, icon: Zap, color: "from-amber-500 to-orange-600" },
     { label: "Clarity", value: data.clarity, icon: Eye, color: "from-pink-500 to-rose-600" },
     { label: "Answer Relevance", value: data.answerRelevance, icon: CheckCircle, color: "from-indigo-500 to-violet-600" },
   ];
@@ -83,11 +81,25 @@ export default function DashboardPage() {
 
         <div className="p-8 space-y-6">
           {/* Metrics Grid */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {metrics.map((metric) => (
-              <MetricCard key={metric.label} {...metric} />
-            ))}
-          </section>
+          {metrics.some((metric) => metric.value !== null) ? (
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {metrics.map((metric) => (
+                metric.value === null ? null : (
+                  <MetricCard
+                    key={metric.label}
+                    label={metric.label}
+                    value={metric.value}
+                    icon={metric.icon}
+                    color={metric.color}
+                  />
+                )
+              ))}
+            </section>
+          ) : (
+            <p role="status" className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6 text-sm text-muted-foreground">
+              Insufficient verified interview data is available to calculate performance scores.
+            </p>
+          )}
 
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">

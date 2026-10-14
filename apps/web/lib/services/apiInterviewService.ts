@@ -1,11 +1,12 @@
-import type { InterviewService, InterviewBlueprint, EvaluationReport } from "./interviewService";
+import type {
+  InterviewService,
+  InterviewBlueprint,
+  TranscriptAck,
+} from "./interviewService";
 import type {
   CoachingPlan,
-  CommunicationFingerprint,
-  EvaluationReport as ApiEvaluationReport,
   InterviewConfig,
   InterviewQuestion,
-  InterviewReport,
   JobDescription,
   PerformanceHistory,
 } from "@/types";
@@ -129,17 +130,43 @@ class ApiInterviewService implements InterviewService {
     };
   }
 
-  async startInterview(id: string): Promise<{ sessionId: string; questions: InterviewQuestion[]; question_text?: string }> {
-    const response = await this.request<{ question_text?: string }>(`/api/interviews/sessions/${id}/start`, {
+  async startInterview(id: string): Promise<{
+    sessionId: string;
+    questions: InterviewQuestion[];
+    question_text?: string;
+    message_id?: string;
+    sequence_number?: number;
+    timestamp_ms?: number;
+  }> {
+    const response = await this.request<{
+      question_text?: string;
+      message_id?: string;
+      sequence_number?: number;
+      timestamp_ms?: number;
+    }>(`/api/interviews/sessions/${id}/start`, {
       method: "POST",
     });
-    return { sessionId: id, questions: [], question_text: response.question_text };
+    return { sessionId: id, questions: [], ...response };
   }
 
-  async submitTranscript(id: string, message: string): Promise<void> {
-    await this.request(`/api/interviews/sessions/${id}/transcript`, {
+  async submitTranscript(
+    id: string,
+    message: string,
+    metadata: {
+      messageId?: string;
+      durationMs?: number | null;
+      language?: "en" | "es" | "fr";
+    } = {},
+  ): Promise<TranscriptAck> {
+    return this.request<TranscriptAck>(`/api/interviews/sessions/${id}/transcript`, {
       method: "POST",
-      body: JSON.stringify({ speaker: "candidate", message }),
+      body: JSON.stringify({
+        speaker: "candidate",
+        message,
+        message_id: metadata.messageId,
+        duration_ms: metadata.durationMs ?? null,
+        language: metadata.language ?? "en",
+      }),
     });
   }
 
@@ -150,6 +177,9 @@ class ApiInterviewService implements InterviewService {
       is_demo: boolean;
       source: "real" | "simulated";
       degraded: boolean;
+      message_id: string;
+      sequence_number: number;
+      timestamp_ms: number;
     }>(`/api/interviews/sessions/${id}/generate-question`, {
       method: "POST",
       body: JSON.stringify({ candidate_transcript: candidateTranscript }),
@@ -162,8 +192,8 @@ class ApiInterviewService implements InterviewService {
     });
   }
 
-  async getReport(id: string): Promise<InterviewReport | null> {
-    return this.request<InterviewReport | null>(`/api/evaluations/sessions/${id}/report`);
+  async getReport(id: string): Promise<never> {
+    return this.request<never>(`/api/evaluations/sessions/${id}/report`);
   }
 
   async getHistory(): Promise<InterviewConfig[]> {
@@ -188,12 +218,8 @@ class ApiInterviewService implements InterviewService {
     });
   }
 
-  async getFingerprint(interviewId: string): Promise<CommunicationFingerprint> {
-    const report = await this.getReport(interviewId);
-    if (!report) {
-      throw new Error(`No report found for interview ${interviewId}`);
-    }
-    return report.communicationFingerprint;
+  async getFingerprint(interviewId: string): Promise<never> {
+    return this.getReport(interviewId);
   }
 
   async getCoachingPlan(interviewId: string): Promise<CoachingPlan> {
@@ -211,23 +237,10 @@ class ApiInterviewService implements InterviewService {
     });
   }
 
-  async generateEvaluation(sessionId: string): Promise<EvaluationReport> {
-    return this.request<ApiEvaluationReport>(`/api/evaluations/sessions/${sessionId}/report/generate`, {
+  async generateEvaluation(sessionId: string): Promise<never> {
+    return this.request<never>(`/api/evaluations/sessions/${sessionId}/report/generate`, {
       method: "POST",
-    }).then((report) => ({
-      sessionId: report.sessionId,
-      overallScore: report.overallScore,
-      technicalScore: report.technicalScore,
-      communicationScore: report.communicationScore,
-      confidenceScore: report.confidenceScore,
-      clarityScore: report.clarityScore,
-      relevanceScore: report.relevanceScore,
-      problemSolvingScore: report.problemSolvingScore,
-      communicationFingerprint: report.communicationFingerprint,
-      topWeakness: report.topWeakness,
-      topStrength: report.topStrength,
-      recommendation: report.recommendation,
-    }));
+    });
   }
 }
 

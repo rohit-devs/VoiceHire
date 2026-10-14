@@ -1,13 +1,10 @@
 import type { InterviewService } from "@/lib/services/interviewService";
 import type {
   InterviewConfig,
-  InterviewReport,
   PerformanceHistory,
   CoachingPlan,
   JobDescription,
-  CommunicationFingerprint,
   InterviewBlueprint,
-  EvaluationReport,
   InterviewQuestion,
 } from "@/types";
 
@@ -119,8 +116,8 @@ export class MockInterviewService implements InterviewService {
     return { sessionId, questions, question_text: questions[0].question };
   }
 
-  async submitTranscript(): Promise<void> {
-    await sleep(100);
+  async submitTranscript(): Promise<never> {
+    throw new Error("Transcript submission requires the interview API.");
   }
 
   async generateNextQuestion(): Promise<{
@@ -129,6 +126,9 @@ export class MockInterviewService implements InterviewService {
     is_demo: boolean;
     source: "real" | "simulated";
     degraded: boolean;
+    message_id: string;
+    sequence_number: number;
+    timestamp_ms: number;
   }> {
     throw new Error("Next-question generation requires the interview API.");
   }
@@ -137,9 +137,8 @@ export class MockInterviewService implements InterviewService {
     await sleep(300);
   }
 
-  async getReport(id: string): Promise<InterviewReport | null> {
-    await sleep(800);
-    return this.generateMockReport(id);
+  async getReport(): Promise<never> {
+    throw new Error("Verified interview reports are not available.");
   }
 
   async getHistory(): Promise<InterviewConfig[]> {
@@ -148,25 +147,8 @@ export class MockInterviewService implements InterviewService {
   }
 
   async getPerformanceHistory(days = 30): Promise<PerformanceHistory[]> {
-    await sleep(400);
-    const history: PerformanceHistory[] = [];
-    const now = new Date();
-    for (let i = days; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      history.push({
-        date: date.toISOString().split("T")[0],
-        overallScore: 65 + Math.floor(Math.random() * 30),
-        technical: 70 + Math.floor(Math.random() * 25),
-        communication: 60 + Math.floor(Math.random() * 30),
-        confidence: 65 + Math.floor(Math.random() * 25),
-        clarity: 70 + Math.floor(Math.random() * 25),
-        conciseness: 60 + Math.floor(Math.random() * 30),
-        fillerWords: Math.floor(Math.random() * 12),
-        speakingPace: 120 + Math.floor(Math.random() * 40),
-      });
-    }
-    return history;
+    void days;
+    return [];
   }
 
   async analyzeJobDescription(text: string): Promise<JobDescription> {
@@ -185,16 +167,8 @@ export class MockInterviewService implements InterviewService {
     };
   }
 
-  async getFingerprint(): Promise<CommunicationFingerprint> {
-    await sleep(500);
-    return {
-      clarity: 82,
-      conciseness: 72,
-      speakingPace: 132,
-      confidence: 78,
-      fillerControl: 65,
-      answerStructure: 85,
-    };
+  async getFingerprint(): Promise<never> {
+    throw new Error("Verified communication metrics are not available.");
   }
 
   async getCoachingPlan(interviewId: string): Promise<CoachingPlan> {
@@ -233,76 +207,8 @@ export class MockInterviewService implements InterviewService {
     };
   }
 
-  async generateEvaluation(sessionId: string): Promise<EvaluationReport> {
-    await sleep(1200);
-    return {
-      sessionId,
-      overallScore: 82,
-      technicalScore: 86,
-      communicationScore: 74,
-      confidenceScore: 79,
-      clarityScore: 88,
-      relevanceScore: 91,
-      problemSolvingScore: 83,
-      communicationFingerprint: {
-        clarity: 82,
-        conciseness: 72,
-        structure: 85,
-        pace: 132,
-        fillerControl: 65,
-      },
-      topWeakness: "Filler words and long pauses",
-      topStrength: "Strong technical fundamentals",
-      recommendation: "Practice PREP method to structure answers and reduce filler words.",
-    };
-  }
-
-  private generateMockReport(id: string): InterviewReport {
-    return {
-      id: `report-${Date.now()}`,
-      interviewId: id,
-      overallScore: 82,
-      technicalScore: 86,
-      communicationScore: 74,
-      confidenceScore: 79,
-      clarityScore: 88,
-      problemSolvingScore: 83,
-      answerRelevanceScore: 91,
-      strengths: [
-        "Strong technical fundamentals",
-        "Good project explanation",
-        "Relevant examples provided",
-        "Good problem-solving approach",
-      ],
-      improvements: [
-        "Reduce filler words (5 detected)",
-        "Improve conciseness",
-        "Avoid long pauses before answering",
-        "Structure answers using PREP method",
-      ],
-      summary: "Your technical knowledge is strong, but your answers can be more concise. Focus on reducing filler words and structuring responses.",
-      communicationFingerprint: {
-        clarity: 82,
-        conciseness: 72,
-        speakingPace: 132,
-        confidence: 78,
-        fillerControl: 65,
-        answerStructure: 85,
-      },
-      detailedMetrics: {
-        clarity: 82,
-        confidence: 78,
-        relevance: 91,
-        fillerWordsCount: 5,
-        avgWpm: 132,
-        longPauses: 6,
-        avgResponseTime: 4.2,
-        answerStructure: 85,
-      },
-      questions: [],
-      transcripts: [],
-      createdAt: new Date().toISOString(),
-    };
+  async generateEvaluation(): Promise<never> {
+    throw new Error("Verified evaluation reports are not available.");
   }
 }
 

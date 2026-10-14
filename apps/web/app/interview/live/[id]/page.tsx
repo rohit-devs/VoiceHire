@@ -5,30 +5,28 @@ import { useRouter, useParams } from "next/navigation";
 import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
 import { useInterviewStore } from "@/stores/interviewStore";
 import { useInterviewWebSocket } from "@/hooks/useInterviewWebSocket";
-import { useFetchAgoraToken } from "@/hooks/useFetchAgoraToken";
-import { useAgoraRTC } from "@/hooks/useAgoraRTC";
+import { useAgoraVoice, type AgoraVoiceState } from "@/hooks/useAgoraVoice";
 import { useAuth } from "@clerk/nextjs";
 import { VoiceOrb } from "@/components/interview/VoiceOrb";
-import { Loader2, ArrowRight, PhoneOff } from "lucide-react";
+import { Loader2, ArrowRight, PhoneOff, Mic, MicOff } from "lucide-react";
+import {
+  BrowserSpeechRecognitionProvider,
+  BrowserSpeechSynthesisProvider,
+  type FinalSpeechSegment,
+} from "@/lib/speech/speechProviders";
 
-type OrbState = "idle" | "listening" | "thinking" | "speaking" | "user_speaking" | "interrupted";
-
-interface TranscriptMessage {
+interface RoomTranscript {
   id: string;
+  sequenceNumber: number;
   speaker: "candidate" | "interviewer";
   text: string;
   timestamp: number;
 }
 
-interface LiveMetrics {
-  clarity: number;
-  confidence: number;
-  relevance: number;
-  fillerWordsCount: number;
-  avgWpm: number;
-  longPauses: number;
-  avgResponseTime: number;
-  answerStructure: number;
+interface MetricResult {
+  value: number | null;
+  unit: string;
+  reason: string | null;
 }
 
 export default function LiveInterviewPage() {
@@ -40,51 +38,49 @@ export default function LiveInterviewPage() {
   const { isLoaded: clerkLoaded, isSignedIn, getToken } = useAuth();
   const [authToken, setAuthTokenState] = useState<string | null>(null);
 
-  const [agoraToken, setAgoraToken] = useState("");
-  const [agoraChannel, setAgoraChannel] = useState("");
   const [loading, setLoading] = useState(true);
   const [aiQuestion, setAiQuestion] = useState("");
   const [answerText, setAnswerText] = useState("");
-  const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
-  const [metrics, setMetrics] = useState<LiveMetrics | null>(null);
-  const [orbState, setOrbState] = useState<OrbState>("idle");
+  const [transcripts, setTranscripts] = useState<RoomTranscript[]>([]);
+  const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null);
+  const [orbState, setOrbState] = useState<AgoraVoiceState | "thinking" | "speaking" | "listening" | "user-speaking">("idle");
   const [elapsed, setElapsed] = useState(0);
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
   const [useRealVoice, setUseRealVoice] = useState(true);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const [speechRestartSignal, setSpeechRestartSignal] = useState(0);
   const [isDemo, setIsDemo] = useState(false);
   const [actionError, setActionError] = useState("");
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState("");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognitionProvider | null>(null);
+  const speechSynthesisRef = useRef<BrowserSpeechSynthesisProvider | null>(null);
+  const processingAnswerRef = useRef(false);
+  const spokenQuestionRef = useRef("");
 
-  // WebSocket for real-time transcript/metrics
   const sessionId = interviewId;
   const {
     isConnected: wsConnected,
     isConnecting: wsConnecting,
     transcripts: wsTranscripts,
     metrics: wsMetrics,
-    aiThinking,
     connect: connectWebSocket,
     disconnect: disconnectWebSocket,
-   } = useInterviewWebSocket({ sessionId, autoConnect: false, authToken });
+  } = useInterviewWebSocket({ sessionId, autoConnect: false, authToken });
 
-   // Agora token fetching
-   const { fetchToken, isLoading: tokenLoading, error: tokenError } = useFetchAgoraToken({ authToken });
-
-  // Agora RTC
   const {
-    isConnected: agoraConnected,
-    isConnecting: agoraConnecting,
+    state: agoraState,
+    isMuted,
+    audioLevel,
+    networkQuality,
     error: agoraError,
     join: joinAgora,
     leave: leaveAgora,
-   } = useAgoraRTC({
-    token: agoraToken,
-    channelName: agoraChannel || `vh-${interviewId}`,
-    uid: 1,
-    autoConnect: false,
-   });
+    mute: muteAgora,
+    unmute: unmuteAgora,
+  } = useAgoraVoice({ sessionId, authToken });
 
   // Load Clerk JWT for authenticated WebSocket/token requests
   useEffect(() => {
@@ -100,7 +96,6 @@ export default function LiveInterviewPage() {
     interviewService.getInterview(interviewId)
       .then((session) => {
         if (!session) throw new Error("Interview session was not found.");
-        setAgoraChannel(session.agoraChannel ?? "");
         setIsDemo(session.isDemo ?? false);
         setSessionId(sessionId);
         setInterviewPhase("live");
@@ -120,41 +115,42 @@ export default function LiveInterviewPage() {
   // Sync WebSocket transcripts to local state (merge, don't replace)
   useEffect(() => {
     if (wsTranscripts.length > 0) {
-      const mapped = wsTranscripts.map((t, idx) => ({
-        id: `ws-${idx}`,
-        speaker: t.speaker,
-        text: t.text,
-        timestamp: t.timestamp_ms,
+      const mapped = wsTranscripts.map((transcript) => ({
+        id: transcript.message_id,
+        sequenceNumber: transcript.sequence_number,
+        speaker: transcript.speaker,
+        text: transcript.text,
+        timestamp: transcript.timestamp_ms,
       }));
       // Merge WebSocket transcripts into local, skipping exact duplicates
       setTranscripts((prev) => {
-        const existingKeys = new Set(prev.map((t) => `${t.speaker}:${t.text}`));
-        const newOnes = mapped.filter(
-          (t) => !existingKeys.has(`${t.speaker}:${t.text}`)
-        );
-        return [...prev, ...newOnes];
+        const byId = new Map(prev.map((transcript) => [transcript.id, transcript]));
+        for (const transcript of mapped) byId.set(transcript.id, transcript);
+        return [...byId.values()].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
       });
       const latestQuestion = [...wsTranscripts].reverse().find((t) => t.speaker === "interviewer");
       if (latestQuestion) setAiQuestion(latestQuestion.text);
-      setOrbState("speaking");
     }
   }, [wsTranscripts]);
 
   // Sync WebSocket metrics
   useEffect(() => {
-    if (wsMetrics) {
-      setMetrics({
-        clarity: wsMetrics.clarity_score,
-        confidence: wsMetrics.confidence_score,
-        relevance: wsMetrics.relevance_score,
-        fillerWordsCount: wsMetrics.filler_words_count,
-        avgWpm: wsMetrics.avg_wpm,
-        longPauses: 0,
-        avgResponseTime: 0,
-        answerStructure: 0,
-      });
-    }
+    if (wsMetrics) setMetrics(wsMetrics.metrics);
   }, [wsMetrics]);
+
+  useEffect(() => {
+    const recognition = new BrowserSpeechRecognitionProvider("en");
+    const synthesis = new BrowserSpeechSynthesisProvider();
+    speechRecognitionRef.current = recognition;
+    speechSynthesisRef.current = synthesis;
+    setSpeechSupported(recognition.supported && synthesis.supported);
+    return () => {
+      recognition.stop();
+      synthesis.stop();
+      speechRecognitionRef.current = null;
+      speechSynthesisRef.current = null;
+    };
+  }, []);
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -168,74 +164,93 @@ export default function LiveInterviewPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isInterviewStarted]);
 
-  // The persisted API session is authoritative; realtime voice is optional.
+  const appendTranscript = useCallback((transcript: RoomTranscript) => {
+    setTranscripts((previous) => {
+      if (previous.some((entry) => entry.id === transcript.id)) return previous;
+      return [...previous, transcript].sort(
+        (left, right) => left.sequenceNumber - right.sequenceNumber,
+      );
+    });
+  }, []);
+
   const startInterview = useCallback(async () => {
     setActionError("");
     try {
       const startResponse = await interviewService.startInterview(sessionId);
       if (startResponse.question_text) {
         setAiQuestion(startResponse.question_text);
-        setTranscripts([{ id: "first-q", speaker: "interviewer", text: startResponse.question_text, timestamp: Date.now() }]);
-      }
-      setIsInterviewStarted(true);
-      setOrbState("listening");
-      if (useRealVoice && authToken && agoraChannel) {
-        const tokenData = await fetchToken(agoraChannel, 1);
-        if (tokenData) {
-          setAgoraToken(tokenData.token);
-          await joinAgora({
-            token: tokenData.token,
-            appId: tokenData.app_id,
-            channelName: tokenData.channel_name,
-            uid: tokenData.uid,
+        if (startResponse.message_id && startResponse.sequence_number && startResponse.timestamp_ms) {
+          appendTranscript({
+            id: startResponse.message_id,
+            sequenceNumber: startResponse.sequence_number,
+            speaker: "interviewer",
+            text: startResponse.question_text,
+            timestamp: startResponse.timestamp_ms,
           });
-          connectWebSocket();
-          setOrbState("listening");
         }
       }
+      setIsInterviewStarted(true);
+      setOrbState(useRealVoice ? "connecting" : "idle");
+      connectWebSocket();
+      if (useRealVoice) await joinAgora();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to start interview.");
       setIsInterviewStarted(false);
     }
-  }, [useRealVoice, authToken, agoraChannel, sessionId, fetchToken, joinAgora, connectWebSocket]);
+  }, [appendTranscript, connectWebSocket, joinAgora, sessionId, useRealVoice]);
 
-  const submitAnswer = useCallback(async () => {
-    const message = answerText.trim();
-    if (!message) return;
+  const submitAnswer = useCallback(async (
+    candidateText?: string,
+    speechSegment?: FinalSpeechSegment,
+  ) => {
+    const message = (candidateText ?? answerText).trim();
+    if (!message || processingAnswerRef.current) return;
+    processingAnswerRef.current = true;
+    speechRecognitionRef.current?.stop();
     setActionError("");
-    setOrbState("user_speaking");
+    setOrbState("user-speaking");
     try {
-      await interviewService.submitTranscript(sessionId, message);
-      setTranscripts((prev) => [...prev, {
-        id: `cand-${Date.now()}`,
+      const acknowledgment = await interviewService.submitTranscript(sessionId, message, {
+        messageId: speechSegment?.messageId,
+        durationMs: speechSegment?.durationMs,
+        language: speechSegment?.language,
+      });
+      appendTranscript({
+        id: acknowledgment.message_id,
+        sequenceNumber: acknowledgment.sequence_number,
         speaker: "candidate",
         text: message,
-        timestamp: Date.now(),
-      }]);
+        timestamp: acknowledgment.timestamp_ms,
+      });
       setAnswerText("");
       setLastSubmittedAnswer(message);
       setOrbState("thinking");
       const nextQuestion = await interviewService.generateNextQuestion(sessionId, message);
       setAiQuestion(nextQuestion.question_text);
-      setTranscripts((prev) => [...prev, {
-        id: `question-${Date.now()}`,
+      appendTranscript({
+        id: nextQuestion.message_id,
+        sequenceNumber: nextQuestion.sequence_number,
         speaker: "interviewer",
         text: nextQuestion.question_text,
-        timestamp: Date.now(),
-      }]);
+        timestamp: nextQuestion.timestamp_ms,
+      });
       setLastSubmittedAnswer("");
-      setOrbState("listening");
+      setOrbState(useRealVoice && agoraState === "connected" ? "speaking" : "idle");
       if (nextQuestion.state === "completed") {
         setInterviewPhase("processing");
         disconnectWebSocket();
+        speechRecognitionRef.current?.stop();
+        speechSynthesisRef.current?.stop();
         leaveAgora();
         router.push(`/interview/complete/${interviewId}`);
       }
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to submit answer or generate the next question.");
-      setOrbState("listening");
+      setOrbState(useRealVoice && agoraState === "connected" ? "listening" : "idle");
+    } finally {
+      processingAnswerRef.current = false;
     }
-  }, [answerText, disconnectWebSocket, interviewId, leaveAgora, router, sessionId, setInterviewPhase]);
+  }, [agoraState, answerText, appendTranscript, disconnectWebSocket, interviewId, leaveAgora, router, sessionId, setInterviewPhase, useRealVoice]);
 
   const retryQuestionGeneration = useCallback(async () => {
     if (!lastSubmittedAnswer) return;
@@ -244,19 +259,86 @@ export default function LiveInterviewPage() {
     try {
       const nextQuestion = await interviewService.generateNextQuestion(sessionId, lastSubmittedAnswer);
       setAiQuestion(nextQuestion.question_text);
-      setTranscripts((prev) => [...prev, {
-        id: `question-${Date.now()}`,
+      appendTranscript({
+        id: nextQuestion.message_id,
+        sequenceNumber: nextQuestion.sequence_number,
         speaker: "interviewer",
         text: nextQuestion.question_text,
-        timestamp: Date.now(),
-      }]);
+        timestamp: nextQuestion.timestamp_ms,
+      });
       setLastSubmittedAnswer("");
-      setOrbState("listening");
+      setOrbState(useRealVoice && agoraState === "connected" ? "speaking" : "idle");
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to generate the next question.");
-      setOrbState("listening");
+      setOrbState(useRealVoice && agoraState === "connected" ? "listening" : "idle");
     }
-  }, [lastSubmittedAnswer, sessionId]);
+  }, [agoraState, appendTranscript, lastSubmittedAnswer, sessionId, useRealVoice]);
+
+  const speakCurrentQuestion = useCallback(() => {
+    if (
+      !isInterviewStarted ||
+      !useRealVoice ||
+      agoraState !== "connected" ||
+      !aiQuestion ||
+      spokenQuestionRef.current === aiQuestion
+    ) return;
+    const synthesis = speechSynthesisRef.current;
+    if (!synthesis?.supported) return;
+    spokenQuestionRef.current = aiQuestion;
+    setOrbState("speaking");
+    synthesis.speak(aiQuestion, () => setOrbState("listening"));
+  }, [agoraState, aiQuestion, isInterviewStarted, useRealVoice]);
+
+  useEffect(() => {
+    speakCurrentQuestion();
+  }, [speakCurrentQuestion]);
+
+  useEffect(() => {
+    const recognition = speechRecognitionRef.current;
+    if (
+      !isInterviewStarted ||
+      !useRealVoice ||
+      agoraState !== "connected" ||
+      !speechSupported ||
+      speechError ||
+      orbState !== "listening" ||
+      lastSubmittedAnswer ||
+      processingAnswerRef.current ||
+      !recognition
+    ) {
+      recognition?.stop();
+      return;
+    }
+    try {
+      recognition.start(
+        (segment) => {
+          recognition.stop();
+          setSpeechError(null);
+          void submitAnswer(segment.text, segment);
+        },
+        (message) => {
+          setSpeechError(message);
+          setOrbState("idle");
+        },
+        () => {
+          if (!processingAnswerRef.current) setSpeechRestartSignal((value) => value + 1);
+        },
+      );
+    } catch (cause) {
+      setSpeechError(cause instanceof Error ? cause.message : "Speech recognition could not start.");
+    }
+    return () => recognition.stop();
+  }, [
+    agoraState,
+    isInterviewStarted,
+    lastSubmittedAnswer,
+    orbState,
+    speechError,
+    speechRestartSignal,
+    speechSupported,
+    submitAnswer,
+    useRealVoice,
+  ]);
 
   const handleEndInterview = async () => {
     setActionError("");
@@ -264,15 +346,27 @@ export default function LiveInterviewPage() {
       await interviewService.endInterview(interviewId);
       setInterviewPhase("processing");
       disconnectWebSocket();
-      leaveAgora();
+      speechRecognitionRef.current?.stop();
+      speechSynthesisRef.current?.stop();
+      await leaveAgora();
       router.push(`/interview/complete/${interviewId}`);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to end interview.");
     }
   };
 
-  const toggleVoiceMode = () => {
-    setUseRealVoice((enabled) => !enabled);
+  const toggleVoiceMode = async () => {
+    const enableVoice = !useRealVoice;
+    setUseRealVoice(enableVoice);
+    setSpeechError(null);
+    if (!enableVoice) {
+      speechRecognitionRef.current?.stop();
+      speechSynthesisRef.current?.stop();
+      await leaveAgora();
+      setOrbState("idle");
+    } else if (isInterviewStarted) {
+      await joinAgora();
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -317,14 +411,15 @@ export default function LiveInterviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={toggleVoiceMode}
-            className={`text-[11px] px-2 py-1 rounded border transition-colors ${
+            onClick={() => void toggleVoiceMode()}
+            disabled={agoraState === "connecting" || agoraState === "requesting-permission"}
+            className={`text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
               useRealVoice
                 ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
                 : "bg-white/5 text-slate-400 border-white/10"
             }`}
           >
-            {useRealVoice ? "Voice: ON" : "Voice: OFF"}
+            {useRealVoice ? "Voice mode: On" : "Voice mode: Off"}
           </button>
           <span className="text-[13px] font-mono text-muted-foreground">{formatTime(elapsed)}</span>
           <button
@@ -368,8 +463,8 @@ export default function LiveInterviewPage() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] text-muted-foreground">Agora</span>
-                    <span className={`text-[11px] ${agoraConnected ? "text-emerald-400" : "text-amber-400"}`}>
-                      {agoraConnecting ? "Connecting..." : agoraConnected ? "Connected" : "Off"}
+                    <span className={`text-[11px] ${agoraState === "connected" ? "text-emerald-400" : "text-amber-400"}`}>
+                      {agoraState.replace(/-/g, " ")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -378,6 +473,11 @@ export default function LiveInterviewPage() {
                       {wsConnecting ? "Connecting..." : wsConnected ? "Live" : "Off"}
                     </span>
                   </div>
+                  {networkQuality && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Network quality uplink {networkQuality.uplink}/downlink {networkQuality.downlink}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -411,7 +511,12 @@ export default function LiveInterviewPage() {
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex-shrink-0">
-                    <VoiceOrb state={orbState} size={64} />
+                    <VoiceOrb
+                      state={orbState}
+                      size={64}
+                      audioLevel={agoraState === "connected" ? audioLevel : 0}
+                      connected={agoraState === "connected"}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
@@ -425,16 +530,17 @@ export default function LiveInterviewPage() {
                       {orbState === "listening" && (
                         <span className="text-[10px] text-blue-300 bg-blue-500/10 px-1.5 py-0.5 rounded">Listening</span>
                       )}
-                      {aiThinking && (
-                        <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded animate-pulse">AI Thinking</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 mb-3">
-                      <WaveformBars state={orbState} />
                     </div>
                     <p className="text-[15px] text-white leading-relaxed">
                       {currentQuestion?.q}
                     </p>
+                    {useRealVoice && (
+                      <p className="mt-3 text-[11px] text-slate-400">
+                        {agoraState === "connected"
+                          ? "Agora audio connected · Browser speech recognition · Local speech playback"
+                          : `Voice unavailable (${agoraState.replace(/-/g, " ")}). Use text input or the labeled simulated demo.`}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -452,7 +558,11 @@ export default function LiveInterviewPage() {
                         <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Speaking</span>
                       </div>
                       <div className="flex items-center gap-3 mb-2">
-                        <GreenWaveformBars active={orbState === "user_speaking"} />
+                        {agoraState === "connected" && audioLevel > 0 && (
+                          <span className="text-[10px] text-emerald-300">
+                            Microphone level {Math.round(audioLevel)}%
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-emerald-100 leading-relaxed">
                         {transcripts.filter(t => t.speaker === "candidate").pop()?.text}
@@ -467,13 +577,13 @@ export default function LiveInterviewPage() {
                 {!isInterviewStarted ? (
                   <button
                     onClick={startInterview}
-                    disabled={tokenLoading || agoraConnecting}
+                    disabled={agoraState === "connecting" || agoraState === "requesting-permission"}
                     className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all disabled:opacity-50"
                   >
-                    {tokenLoading || agoraConnecting ? (
+                    {agoraState === "connecting" || agoraState === "requesting-permission" ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Connecting...
+                        {agoraState === "requesting-permission" ? "Requesting microphone..." : "Connecting..."}
                       </>
                     ) : (
                       <>
@@ -493,12 +603,21 @@ export default function LiveInterviewPage() {
                     >
                     </textarea>
                     <button
-                      onClick={submitAnswer}
+                      onClick={() => void submitAnswer()}
                       disabled={!answerText.trim() || orbState === "thinking"}
                       className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
                       Submit Answer
                     </button>
+                    {agoraState === "connected" && (
+                      <button
+                        onClick={() => void (isMuted ? unmuteAgora() : muteAgora())}
+                        aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                      >
+                        {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -514,22 +633,23 @@ export default function LiveInterviewPage() {
                   )}
                 </div>
               )}
-              {(tokenError || agoraError) && (
-                <div className="text-xs text-rose-400 text-center">
-                  {tokenError || agoraError}
+              {(agoraError || speechError || (!speechSupported && isInterviewStarted && agoraState === "connected")) && (
+                <div role="status" className="text-xs text-amber-300 text-center">
+                  {agoraError || speechError || "Browser speech recognition/playback is unsupported; use text input."}
+                  <p className="mt-1 text-slate-400">Your interview remains available in text mode.</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Bottom Metrics */}
-          {metrics && (
+          {isInterviewStarted && (
             <div className="h-16 border-t border-white/[0.08] bg-[#0a0a0f] flex items-center px-6 gap-6 flex-shrink-0">
-              <MetricItem label="Speaking Pace" value={`${metrics.avgWpm} WPM`} />
-              <MetricItem label="Filler Words" value={metrics.fillerWordsCount.toString()} />
-              <MetricItem label="Clarity" value={`${metrics.clarity}%`} />
-              <MetricItem label="Confidence" value={`${metrics.confidence}%`} />
-              <MetricItem label="Relevance" value={`${metrics.relevance}%`} />
+              <MetricItem label="Speaking" metric={getMetric(metrics, "speaking_duration_seconds")} />
+              <MetricItem label="Pace" metric={getMetric(metrics, "words_per_minute")} />
+              <MetricItem label="Filler rate" metric={getMetric(metrics, "filler_word_rate")} />
+              <MetricItem label="Avg. answer" metric={getMetric(metrics, "answer_length_words")} />
+              <MetricItem label="Remaining" metric={getMetric(metrics, "time_remaining_seconds")} />
               <div className="flex-1" />
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">Interview Progress</span>
@@ -575,52 +695,32 @@ export default function LiveInterviewPage() {
   );
 }
 
-function MetricItem({ label, value }: { label: string; value: string }) {
+function getMetric(
+  metrics: Record<string, unknown> | null,
+  key: string,
+): MetricResult {
+  const value = metrics?.[key];
+  if (!value || typeof value !== "object") {
+    return { value: null, unit: "", reason: "Metrics are not available yet." };
+  }
+  const candidate = value as Partial<MetricResult>;
+  return {
+    value: typeof candidate.value === "number" ? candidate.value : null,
+    unit: typeof candidate.unit === "string" ? candidate.unit : "",
+    reason: typeof candidate.reason === "string" ? candidate.reason : null,
+  };
+}
+
+function MetricItem({ label, metric }: { label: string; metric: MetricResult }) {
+  const value = metric.value === null
+    ? "—"
+    : `${Number.isInteger(metric.value) ? metric.value : metric.value.toFixed(1)} ${metric.unit}`;
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3" title={metric.reason ?? undefined}>
       <div>
         <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="text-sm font-bold text-white">{value}</p>
+        <p className="text-sm font-bold text-white" aria-label={metric.reason ?? `${label}: ${value}`}>{value}</p>
       </div>
-    </div>
-  );
-}
-
-function WaveformBars({ state }: { state: OrbState }) {
-  const isActive = state === "speaking" || state === "thinking" || state === "listening";
-  return (
-    <div className="flex items-center gap-[3px] h-6">
-      {[...Array(12)].map((_, i) => (
-        <div
-          key={i}
-          className="w-[3px] rounded-full bg-violet-400 transition-all duration-150"
-          style={{
-            height: isActive ? `${Math.random() * 16 + 4}px` : "4px",
-            opacity: isActive ? 0.8 : 0.3,
-            animation: isActive ? `waveform 0.6s ease-in-out infinite alternate` : "none",
-            animationDelay: `${i * 0.05}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function GreenWaveformBars({ active }: { active: boolean }) {
-  return (
-    <div className="flex items-center gap-[3px] h-5">
-      {[...Array(10)].map((_, i) => (
-        <div
-          key={i}
-          className="w-[3px] rounded-full bg-emerald-400 transition-all duration-150"
-          style={{
-            height: active ? `${Math.random() * 12 + 4}px` : "3px",
-            opacity: active ? 0.8 : 0.3,
-            animation: active ? `waveform 0.5s ease-in-out infinite alternate` : "none",
-            animationDelay: `${i * 0.04}s`,
-          }}
-        />
-      ))}
     </div>
   );
 }

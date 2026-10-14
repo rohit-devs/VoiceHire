@@ -158,6 +158,7 @@ class Transcript(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("speaker IN ('candidate', 'interviewer')", name="ck_transcripts_speaker"),
         Index("ix_transcripts_session_created", "session_id", "created_at"),
+        UniqueConstraint("message_id", name="uq_transcripts_message_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -166,6 +167,9 @@ class Transcript(TimestampMixin, Base):
     )
     speaker: Mapped[str] = mapped_column(String(50), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    message_id: Mapped[str] = mapped_column(
+        String(36), nullable=False, default=lambda: str(uuid.uuid4())
+    )
     filler_word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     filler_words: Mapped[list[str] | None] = mapped_column(JSON)
     words_per_minute: Mapped[int | None] = mapped_column(Integer)
@@ -174,6 +178,8 @@ class Transcript(TimestampMixin, Base):
     clarity_score: Mapped[float | None] = mapped_column(Float)
     relevance_score: Mapped[float | None] = mapped_column(Float)
     timestamp_ms: Mapped[int | None] = mapped_column(Integer)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    language: Mapped[str] = mapped_column(String(10), nullable=False, default="en")
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="real")
 
 

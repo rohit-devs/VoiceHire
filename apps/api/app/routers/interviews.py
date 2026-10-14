@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket,
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.database import get_db, async_session
 from app.auth import get_current_user, _verify_clerk_token, _DEMO_USER
 from app.websocket_manager import connection_manager
@@ -38,6 +39,7 @@ from app.interview.token_budget import (
 from app.config import settings
 from app.models import CandidateProfile, InterviewSession, Transcript
 from app.idempotency import cached_response, store_response
+from app.interview.voice_metrics import calculate_voice_metrics
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -90,13 +92,97 @@ class InterviewSessionResponse(BaseModel):
 
 class TranscriptMessage(BaseModel):
     """Transcript message"""
-    speaker: Literal["candidate", "interviewer"]
+    speaker: Literal["candidate"]
     message: str = Field(min_length=1, max_length=20_000)
-    timestamp_ms: Optional[int] = None
+    message_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    duration_ms: Optional[int] = Field(default=None, ge=1, le=300_000)
+    language: Literal["en", "es", "fr"] = "en"
 
 
 class GenerateQuestionRequest(BaseModel):
     candidate_transcript: Optional[str] = Field(default=None, max_length=20_000)
+
+
+def _transcript_event(row: Transcript) -> dict:
+    return {
+        "type": "transcript",
+        "message_id": row.message_id,
+        "sequence_number": row.id,
+        "speaker": row.speaker,
+        "text": row.message,
+        "timestamp_ms": row.timestamp_ms,
+        "duration_ms": row.duration_ms,
+        "language": row.language,
+        "is_final": True,
+        "source": row.source,
+    }
+
+
+async def _save_transcript(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    speaker: Literal["candidate", "interviewer"],
+    message: str,
+    source: str,
+    message_id: str | None = None,
+    duration_ms: int | None = None,
+    language: str = "en",
+) -> Transcript:
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    row = Transcript(
+        session_id=session_id,
+        speaker=speaker,
+        message=message,
+        message_id=message_id or str(uuid.uuid4()),
+        timestamp_ms=now_ms,
+        duration_ms=duration_ms,
+        language=language,
+        source=source,
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def _broadcast_voice_metrics(
+    db: AsyncSession, session: InterviewSession
+) -> None:
+    candidate_rows = list(
+        (
+            await db.scalars(
+                select(Transcript)
+                .where(
+                    Transcript.session_id == session.id,
+                    Transcript.speaker == "candidate",
+                )
+                .order_by(Transcript.id)
+            )
+        ).all()
+    )
+    metrics = calculate_voice_metrics(
+        [
+            {
+                "speaker": row.speaker,
+                "message": row.message,
+                "language": row.language,
+                "timestamp_ms": row.timestamp_ms,
+                "duration_ms": row.duration_ms,
+            }
+            for row in candidate_rows
+        ],
+        started_at=session.started_at,
+        duration_seconds=session.requested_duration_seconds,
+    )
+    await connection_manager.broadcast_transcript(
+        session_id=session.id,
+        message={
+            "type": "voice_metrics",
+            "timestamp_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+            "source": "simulated" if session.is_demo else "real",
+            "metrics": metrics,
+        },
+    )
 
 
 
@@ -476,14 +562,12 @@ async def start_interview(
             raise HTTPException(status_code=409, detail="Invalid session state transition")
         session = await db.get(InterviewSession, session_id)
         source = "simulated" if session.is_demo else "real"
-        db.add(
-            Transcript(
-                session_id=session_id,
-                speaker="interviewer",
-                message=generated.question_text,
-                timestamp_ms=int(datetime.now(timezone.utc).timestamp() * 1000),
-                source=source,
-            )
+        transcript = await _save_transcript(
+            db,
+            session_id=session_id,
+            speaker="interviewer",
+            message=generated.question_text,
+            source=source,
         )
         session.question_count += 1
         await db.commit()
@@ -494,6 +578,9 @@ async def start_interview(
             "question_text": generated.question_text,
             "is_demo": session.is_demo,
             "source": source,
+            "message_id": transcript.message_id,
+            "sequence_number": transcript.id,
+            "timestamp_ms": transcript.timestamp_ms,
         }
         await store_response(
             db, user["id"], operation, idempotency_key, session_id, response
@@ -501,14 +588,7 @@ async def start_interview(
         await db.commit()
         
         await connection_manager.broadcast_transcript(
-            session_id=session_id,
-            message={
-                "type": "transcript",
-                "speaker": "interviewer",
-                "text": generated.question_text,
-                "timestamp_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
-                "source": source,
-            },
+            session_id=session_id, message=_transcript_event(transcript)
         )
         return response
 
@@ -592,6 +672,28 @@ async def add_transcript(
         session = await db.get(InterviewSession, session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Interview session not found")
+        existing = await db.scalar(
+            select(Transcript).where(Transcript.message_id == str(message.message_id))
+        )
+        if existing is not None:
+            if (
+                existing.session_id != session_id
+                or existing.speaker != message.speaker
+                or existing.message != message.message
+                or existing.duration_ms != message.duration_ms
+                or existing.language != message.language
+            ):
+                raise HTTPException(status_code=409, detail="Transcript message id was already used")
+            return {
+                "status": "recorded",
+                "session_id": session_id,
+                "current_state": session.current_state,
+                "source": existing.source,
+                "message_id": existing.message_id,
+                "sequence_number": existing.id,
+                "timestamp_ms": existing.timestamp_ms,
+                "idempotent": True,
+            }
         source_state = SessionState(session.current_state)
         if source_state != SessionState.INTERVIEWING:
             raise HTTPException(
@@ -604,29 +706,24 @@ async def add_transcript(
             SessionState.PROCESSING_RESPONSE, "candidate_answer_received"
         ):
             raise HTTPException(status_code=409, detail="Invalid session state transition")
-        timestamp_ms = message.timestamp_ms or int(datetime.now(timezone.utc).timestamp() * 1000)
         source = "simulated" if session.is_demo else "real"
-        db.add(
-            Transcript(
-                session_id=session_id,
-                speaker=message.speaker,
-                message=message.message,
-                timestamp_ms=timestamp_ms,
-                source=source,
-            )
+        transcript = await _save_transcript(
+            db,
+            session_id=session_id,
+            speaker=message.speaker,
+            message=message.message,
+            source=source,
+            message_id=str(message.message_id),
+            duration_ms=message.duration_ms,
+            language=message.language,
         )
         await db.commit()
         await connection_manager.broadcast_transcript(
-            session_id=session_id,
-            message={
-                "type": "transcript",
-                "speaker": message.speaker,
-                "text": message.message,
-                "timestamp_ms": timestamp_ms,
-                "source": source,
-            }
+            session_id=session_id, message=_transcript_event(transcript)
         )
-        
+        if message.speaker == "candidate":
+            await _broadcast_voice_metrics(db, session)
+
         return {
             "status": "recorded",
             "session_id": session_id,
@@ -636,8 +733,35 @@ async def add_transcript(
                 else SessionState.INTERVIEWING.value
             ),
             "source": source,
+            "message_id": transcript.message_id,
+            "sequence_number": transcript.id,
+            "timestamp_ms": transcript.timestamp_ms,
         }
 
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(
+            select(Transcript).where(Transcript.message_id == str(message.message_id))
+        )
+        if (
+            existing is not None
+            and existing.session_id == session_id
+            and existing.speaker == message.speaker
+            and existing.message == message.message
+            and existing.duration_ms == message.duration_ms
+            and existing.language == message.language
+        ):
+            return {
+                "status": "recorded",
+                "session_id": session_id,
+                "current_state": SessionState.PROCESSING_RESPONSE.value,
+                "source": existing.source,
+                "message_id": existing.message_id,
+                "sequence_number": existing.id,
+                "timestamp_ms": existing.timestamp_ms,
+                "idempotent": True,
+            }
+        raise HTTPException(status_code=409, detail="Transcript could not be persisted exactly once")
     except HTTPException:
         raise
     except Exception as e:
@@ -683,68 +807,58 @@ async def websocket_endpoint(
     session_id: str,
     websocket: WebSocket,
     token: Optional[str] = None,
+    after_sequence: int = 0,
 ):
-    """
-    WebSocket endpoint for real-time transcript streaming and metrics updates.
-
-    Connection flow:
-    1. Client connects: ws://localhost:8000/api/interviews/sessions/{session_id}/ws?token=<jwt>
-    2. Receives transcript messages as they're captured
-    3. Receives real-time metrics updates
-    4. Receives state changes
-    5. Receives AI thinking status
-
-    Message types:
-    - `transcript`: {type, speaker, text, timestamp_ms, metrics}
-    - `metrics`: {type, clarity_score, confidence_score, ...}
-    - `state_change`: {type, state, metadata}
-    - `ai_thinking`: {type, text}
-    - `evaluation_complete`: {type, report}
-
-    Demo identity and simulation are determined from persisted session fields,
-    never from a user-controlled session ID prefix.
-    """
-    # ── Authenticate via query param token ──
-    if not settings.DEMO_MODE or token:
-        if not token:
-            await websocket.close(code=1008)
-            return
-        try:
-            user_info = await _verify_clerk_token(token)
-            user_id = user_info["id"]
-            db = async_session()
-            try:
-                await _verify_session_ownership(db, session_id, user_id)
-            finally:
-                await db.close()
-        except HTTPException:
-            if not settings.DEMO_MODE:
-                await websocket.close(code=1008)
-                return
-            user_info = _DEMO_USER.copy()
-            user_id = user_info["id"]
-    else:
-        user_info = _DEMO_USER.copy()
-        user_id = user_info["id"]
-
+    """Authenticate against session ownership, then replay and stream final segments."""
+    if after_sequence < 0:
+        await websocket.close(code=1008)
+        return
     db = async_session()
     try:
         session = await db.get(InterviewSession, session_id)
-        if session is None or (session.user_id != user_id and user_id != _DEMO_USER["id"]):
+        if session is None:
             await websocket.close(code=1008)
             return
+        if token:
+            try:
+                user_info = await _verify_clerk_token(token)
+            except HTTPException:
+                await websocket.close(code=1008)
+                return
+            user_id = user_info["id"]
+        elif settings.DEMO_MODE and session.is_demo:
+            user_id = _DEMO_USER["id"]
+        else:
+            await websocket.close(code=1008)
+            return
+        if session.user_id != user_id:
+            await websocket.close(code=1008)
+            return
+        replay_rows = list(
+            (
+                await db.scalars(
+                    select(Transcript)
+                    .where(
+                        Transcript.session_id == session_id,
+                        Transcript.id > after_sequence,
+                    )
+                    .order_by(Transcript.id)
+                )
+            ).all()
+        )
+        replay_events = [_transcript_event(row) for row in replay_rows]
     finally:
         await db.close()
 
     await connection_manager.connect(session_id, websocket)
-    logger.info(f"🔗 Client connected to session {session_id}")
-    
     try:
+        for event in replay_events:
+            await websocket.send_json(event)
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         connection_manager.disconnect(session_id, websocket)
-    except Exception:
+    except (RuntimeError, OSError):
         connection_manager.disconnect(session_id, websocket)
 
 
@@ -808,25 +922,16 @@ async def generate_next_question(
             closing_text = "Thank you for your time. The interview is now complete."
             source = "simulated" if session.is_demo else "real"
             timestamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-            db.add(
-                Transcript(
-                    session_id=session_id,
-                    speaker="interviewer",
-                    message=closing_text,
-                    timestamp_ms=timestamp_ms,
-                    source=source,
-                )
+            transcript = await _save_transcript(
+                db,
+                session_id=session_id,
+                speaker="interviewer",
+                message=closing_text,
+                source=source,
             )
             await db.commit()
             await connection_manager.broadcast_transcript(
-                session_id=session_id,
-                message={
-                    "type": "transcript",
-                    "speaker": "interviewer",
-                    "text": closing_text,
-                    "timestamp_ms": timestamp_ms,
-                    "source": source,
-                },
+                session_id=session_id, message=_transcript_event(transcript)
             )
             return {
                 "question_text": closing_text,
@@ -837,6 +942,9 @@ async def generate_next_question(
                 "source": source,
                 "is_demo": session.is_demo,
                 "degraded": False,
+                "message_id": transcript.message_id,
+                "sequence_number": transcript.id,
+                "timestamp_ms": transcript.timestamp_ms,
             }
         if session.question_count >= question_budget - 1:
             question_text = "Thank you for sharing your experience. Do you have any final questions for me?"
@@ -898,26 +1006,21 @@ async def generate_next_question(
         await orchestrator.initialize()
         if not await orchestrator.transition_to(SessionState.INTERVIEWING, "next_question_ready"):
             raise HTTPException(status_code=409, detail="Invalid session state transition")
-        db.add(
-            Transcript(
-                session_id=session_id,
-                speaker="interviewer",
-                message=question_text,
-                timestamp_ms=int(datetime.now(timezone.utc).timestamp() * 1000),
-                source=source,
-            )
+        transcript = await _save_transcript(
+            db,
+            session_id=session_id,
+            speaker="interviewer",
+            message=question_text,
+            source=source,
         )
         session.question_count += 1
         await db.commit()
         await connection_manager.broadcast_transcript(
             session_id=session_id,
             message={
-                "type": "ai_question_generated",
-                "text": question_text,
+                **_transcript_event(transcript),
                 "state": SessionState.INTERVIEWING.value,
                 "difficulty": {"easy": 1, "medium": 2, "hard": 3}[session.difficulty],
-                "timestamp_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
-                "source": source,
             }
         )
         
@@ -932,6 +1035,9 @@ async def generate_next_question(
             "source": source,
             "is_demo": session.is_demo,
             "degraded": False,
+            "message_id": transcript.message_id,
+            "sequence_number": transcript.id,
+            "timestamp_ms": transcript.timestamp_ms,
         }
         
     except TokenBudgetExceeded as exc:

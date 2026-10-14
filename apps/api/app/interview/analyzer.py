@@ -27,7 +27,6 @@ class ResponseAnalysis(BaseModel):
     technical_score: int = Field(..., ge=0, le=100, description="Technical accuracy (0-100)")
     relevance_score: int = Field(..., ge=0, le=100, description="Answer relevance (0-100)")
     clarity_score: int = Field(..., ge=0, le=100, description="Communication clarity, structure, and conciseness (0-100)")
-    confidence_score: int = Field(..., ge=0, le=100, description="Confidence level (0-100)")
     filler_words_detected: list[str] = Field(default_factory=list, description="Filler words found")
     recommended_action: str = Field(
         ...,
@@ -41,12 +40,6 @@ class ResponseAnalysis(BaseModel):
     state_transition: Optional[str] = Field(
         default=None,
         description="Target state: technical|behavioral|pressure|closing|null"
-    )
-    confidence_in_scores: int = Field(
-        ...,
-        ge=0,
-        le=100,
-        description="Confidence in the analysis (0-100)"
     )
     star_analysis: Optional[dict] = Field(
         default=None,
@@ -226,7 +219,6 @@ Scoring Guidelines:
  - technical_score: Accuracy, depth, and relevance of technical knowledge (0-100)
  - relevance_score: How well the answer addresses the question (0-100)
  - clarity_score: Communication clarity, structure, and conciseness (0-100)
- - confidence_score: Apparent confidence, hesitation, uncertainty (0-100)
 
 Recommended actions:
  - CHALLENGE: Response was weak, ask a harder follow-up
@@ -249,13 +241,11 @@ Return JSON with this exact structure:
   "technical_score": <0-100>,
   "relevance_score": <0-100>,
   "clarity_score": <0-100>,
-  "confidence_score": <0-100>,
   "filler_words_detected": {json.dumps(filler_words)},
   "recommended_action": "<CHALLENGE|CLARIFY|FOLLOW_UP|DIFFICULTY_UP|DIFFICULTY_DOWN|STATE_TRANSITION>",
   "follow_up_reason": "<why this action is recommended>",
   "difficulty_adjustment": "<DIFFICULTY_UP|DIFFICULTY_DOWN|NONE>",
   "state_transition": "<technical|behavioral|pressure|closing|null>",
-  "confidence_in_scores": <0-100>,
   "star_analysis": {{"situation": <bool>, "task": <bool>, "action": <bool>, "result": <bool>, "missing_components": [<list>], "recommended_follow_up": "<string or null>"}}
 }}"""
             analysis = None
@@ -286,7 +276,7 @@ Return JSON with this exact structure:
             logger.info(
                 f"✅ Analysis complete: T={analysis.technical_score}, "
                 f"R={analysis.relevance_score}, C={analysis.clarity_score}, "
-                f"Co={analysis.confidence_score} | Action: {analysis.recommended_action}"
+                f"Action: {analysis.recommended_action}"
             )
             
             return analysis

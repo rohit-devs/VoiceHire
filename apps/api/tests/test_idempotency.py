@@ -91,7 +91,9 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
         analytics = await client.get(
             f"/api/evaluations/sessions/{session_id}/analytics"
         )
-        assert analytics.status_code == 409
+        assert analytics.status_code == 200
+        assert analytics.json()["source"] == "simulated"
+        assert analytics.json()["metrics"]["words_per_minute"]["value"] is None
         async with async_session() as db:
             rows = list(
                 (
