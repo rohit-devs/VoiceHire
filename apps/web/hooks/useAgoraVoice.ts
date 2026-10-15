@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import AgoraRTC, {
+import type {
   IAgoraRTCClient,
   ILocalAudioTrack,
   IAgoraRTCRemoteUser,
@@ -204,6 +204,7 @@ export function useAgoraVoice({
       const credentials = await requestToken();
       if (endedRef.current) return;
       updateState("requesting-permission");
+      const { default: AgoraRTC } = await import("agora-rtc-sdk-ng");
       const track = await AgoraRTC.createMicrophoneAudioTrack({
         AEC: true,
         AGC: true,

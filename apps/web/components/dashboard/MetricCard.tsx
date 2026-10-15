@@ -18,8 +18,8 @@ export function MetricCard({ label, value, icon: Icon, color }: MetricCardProps)
             {label}
           </p>
           <p className="text-2xl font-bold text-white tracking-tight">
-            {value}
-            <span className="text-sm text-muted-foreground font-normal">/100</span>
+            {value.toFixed(2)}
+            <span className="text-sm text-muted-foreground font-normal">/5</span>
           </p>
         </div>
         <div className={`rounded-lg bg-gradient-to-br ${color} p-2 shadow-sm flex-shrink-0`}>
@@ -29,7 +29,7 @@ export function MetricCard({ label, value, icon: Icon, color }: MetricCardProps)
       <div className="mt-3 h-1 rounded-full bg-white/[0.08] overflow-hidden">
         <div
           className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-700`}
-          style={{ width: `${value}%` }}
+          style={{ width: `${Math.max(0, Math.min(100, value * 20))}%` }}
         />
       </div>
     </div>

@@ -22,6 +22,8 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
   const chartData = data.slice(-14).map((d) => ({
     date: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     score: d.overallScore,
+    sessionId: d.sessionId,
+    role: d.role,
   }));
 
   return (
@@ -56,6 +58,14 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      <p className="sr-only">Text alternative: {chartData.map((point) => `${point.date}: ${point.score.toFixed(2)} out of 5`).join("; ")}</p>
+      <ul aria-label="Evaluation scores by date" className="mt-3 space-y-1 text-xs text-slate-300">
+        {chartData.slice(-5).map((point) => (
+          <li key={`${point.date}-${point.sessionId}`}>
+            {point.date}, {point.role}: AI rubric judgment {point.score.toFixed(2)} out of 5
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

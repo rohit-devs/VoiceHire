@@ -88,6 +88,7 @@ class InterviewSessionResponse(BaseModel):
     interview_blueprint: Optional[dict] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
 
 class TranscriptMessage(BaseModel):
@@ -308,23 +309,22 @@ async def create_interview_session(
         }
         
         # Create session in database
-        db.add(
-            InterviewSession(
-                id=session_id,
-                user_id=user_id,
-                candidate_profile_id=session_data.candidate_profile_id,
-                role=session_data.role,
-                difficulty=session_data.difficulty,
-                status=SessionState.CREATED.value,
-                current_state=SessionState.CREATED.value,
-                agora_channel=agora_channel,
-                persona=session_data.persona,
-                interview_type=session_data.interview_type,
-                requested_duration_seconds=session_data.duration_seconds,
-                is_demo=session_data.is_demo,
-                metadata_json=metadata,
-            )
+        session = InterviewSession(
+            id=session_id,
+            user_id=user_id,
+            candidate_profile_id=session_data.candidate_profile_id,
+            role=session_data.role,
+            difficulty=session_data.difficulty,
+            status=SessionState.CREATED.value,
+            current_state=SessionState.CREATED.value,
+            agora_channel=agora_channel,
+            persona=session_data.persona,
+            interview_type=session_data.interview_type,
+            requested_duration_seconds=session_data.duration_seconds,
+            is_demo=session_data.is_demo,
+            metadata_json=metadata,
         )
+        db.add(session)
         await db.commit()
         
         logger.info("Created interview session session_id=%s is_demo=%s", session_id, session_data.is_demo)
@@ -342,6 +342,7 @@ async def create_interview_session(
             duration_seconds=session_data.duration_seconds,
             company=session_data.company,
             experience_level=session_data.experience_level,
+            created_at=session.created_at,
         )
         
     except HTTPException:
@@ -388,6 +389,7 @@ async def list_user_sessions(
                 interview_blueprint=s.interview_blueprint,
                 started_at=s.started_at,
                 ended_at=s.ended_at,
+                created_at=s.created_at,
             )
             for s in sessions
         ]
@@ -429,6 +431,7 @@ async def get_interview_session(
             interview_blueprint=session.interview_blueprint,
             started_at=session.started_at,
             ended_at=session.ended_at,
+            created_at=session.created_at,
         )
         
     except HTTPException:
@@ -768,6 +771,35 @@ async def add_transcript(
         logger.exception("Failed to record transcript session_id=%s", session_id)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to record transcript") from e
+
+
+@router.get("/sessions/{session_id}/transcript")
+async def get_session_transcript(
+    session_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    await _verify_session_ownership(db, session_id, user["id"])
+    rows = await db.scalars(
+        select(Transcript)
+        .where(Transcript.session_id == session_id)
+        .order_by(Transcript.id.asc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return [
+        {
+            "message_id": row.message_id,
+            "sequence_number": row.id,
+            "speaker": row.speaker,
+            "text": row.message,
+            "timestamp_ms": row.timestamp_ms,
+            "source": row.source,
+        }
+        for row in rows
+    ]
 
 
 @router.get("/sessions/{session_id}/state")

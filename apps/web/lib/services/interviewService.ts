@@ -4,6 +4,7 @@ import type {
   CoachingPlan,
   JobDescription,
   InterviewQuestion,
+  DashboardData,
 } from "@/types";
 
 export interface InterviewBlueprint {
@@ -25,6 +26,26 @@ export interface TranscriptAck {
   sequence_number: number;
   timestamp_ms: number;
   idempotent?: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  target_role: string | null;
+  background: string | null;
+  default_interview_persona: "friendly_founder" | "technical_lead" | "hr_recruiter" | "stress_interviewer";
+  default_interview_difficulty: "easy" | "medium" | "hard";
+}
+
+export interface PersistedTranscriptEntry {
+  message_id: string;
+  sequence_number: number;
+  speaker: "candidate" | "interviewer";
+  text: string;
+  timestamp_ms: number;
+  source: "real" | "simulated";
 }
 
 export interface EvaluationMetric<T> {
@@ -103,8 +124,13 @@ export interface InterviewService {
   }>;
   endInterview(id: string): Promise<void>;
   getReport(id: string): Promise<EvaluationReport>;
+  getTranscript(id: string): Promise<PersistedTranscriptEntry[]>;
   getHistory(): Promise<InterviewConfig[]>;
   getPerformanceHistory(days?: number): Promise<PerformanceHistory[]>;
+  getUserReports(): Promise<EvaluationReport[]>;
+  getProfile(): Promise<UserProfile>;
+  updateProfile(update: Partial<Omit<UserProfile, "id" | "email">>): Promise<UserProfile>;
+  getDashboardData(): Promise<DashboardData>;
   analyzeJobDescription(text: string): Promise<JobDescription>;
   getFingerprint(interviewId: string): Promise<EvaluationReport>;
   getCoachingPlan(interviewId: string): Promise<CoachingPlan>;

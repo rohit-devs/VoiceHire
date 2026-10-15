@@ -53,6 +53,13 @@ class User(TimestampMixin, Base):
     first_name: Mapped[str | None] = mapped_column(String(100))
     last_name: Mapped[str | None] = mapped_column(String(100))
     avatar_url: Mapped[str | None] = mapped_column(Text)
+    background: Mapped[str | None] = mapped_column(Text)
+    default_interview_persona: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="technical_lead"
+    )
+    default_interview_difficulty: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="medium"
+    )
     llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 

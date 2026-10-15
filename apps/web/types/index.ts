@@ -50,6 +50,8 @@ export interface InterviewConfig {
   agoraChannel?: string;
   isDemo?: boolean;
   createdAt: string;
+  status?: string;
+  currentState?: string;
 }
 
 export interface InterviewQuestion {
@@ -105,12 +107,9 @@ export interface PracticeSession {
 export interface PerformanceHistory {
   date: string;
   overallScore: number;
-  technical: number;
-  communication: number;
-  clarity: number;
-  conciseness: number;
-  fillerWords: number;
-  speakingPace: number;
+  sessionId: string;
+  role: string;
+  categoryScores: Record<string, number>;
 }
 
 export interface InterviewBlueprint {
@@ -137,6 +136,7 @@ export interface DashboardData {
   answerRelevance: number | null;
   recentInterviews: InterviewConfig[];
   performanceHistory: PerformanceHistory[];
+  strengths: string[];
   insights: string[];
   recommendations: string[];
 }

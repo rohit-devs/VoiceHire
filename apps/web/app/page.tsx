@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Mic, Sparkles, BarChart3, MessageSquare, Zap, ArrowRight, Play } from "lucide-react";
+import { Mic, Sparkles, BarChart3, MessageSquare, ArrowRight, Play } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "VoiceHire - AI Interviewer & Communication Coach",
-  description: "Real-time AI voice interviews, adaptive follow-ups, and personalized coaching to help you perform better.",
+  description: "Practice role-specific interviews, review evidence-backed AI guidance, and track verified metrics.",
 };
 
 export default function HomePage() {
@@ -35,23 +35,23 @@ export default function HomePage() {
             </span>
           </h1>
           <p className="text-xl text-slate-400 max-w-2xl mb-10 leading-relaxed">
-            Real-time AI voice interviews with adaptive follow-ups, pressure mode, technical analysis, and personalized coaching.
+            Practice interviews tailored to your resume and target role. Review saved transcripts, measured speaking metrics, and clearly labeled AI feedback.
           </p>
           <div className="flex flex-wrap items-center gap-4">
             <Link
-              href="/dashboard"
+              href="/sign-up"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all"
             >
               <Sparkles className="h-5 w-5" />
-              Launch Dashboard
+              Create an account
               <ArrowRight className="h-5 w-5" />
             </Link>
             <Link
-              href="/interview/new"
+              href="/sign-in"
               className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-8 py-3.5 text-base font-medium text-slate-300 hover:text-white hover:bg-white/10 transition-all"
             >
               <Play className="h-5 w-5" />
-              Start Interview
+              Sign in
             </Link>
           </div>
         </div>
@@ -63,38 +63,38 @@ export default function HomePage() {
           {[
             {
               icon: Mic,
-              title: "Real-Time Voice",
-              desc: "Natural voice conversations with AI interviewer that adapts to your responses.",
+              title: "Voice where supported",
+              desc: "Use browser speech recognition and playback when your browser and microphone permissions support them; text input remains available.",
               color: "from-violet-500 to-purple-600",
             },
             {
               icon: MessageSquare,
-              title: "Adaptive Follow-Ups",
-              desc: "AI asks contextual follow-up questions based on your answers, just like real interviews.",
+              title: "Contextual questions",
+              desc: "Questions can use the profile and job context you provide, and follow-ups can reference submitted answers.",
               color: "from-blue-500 to-cyan-600",
             },
             {
-              icon: Zap,
-              title: "Pressure Mode",
-              desc: "Simulate high-pressure interview scenarios with interruptions and challenges.",
+              icon: MessageSquare,
+              title: "Text fallback",
+              desc: "Complete an interview using typed answers if voice features are unavailable.",
               color: "from-amber-500 to-orange-600",
             },
             {
               icon: BarChart3,
               title: "Technical Analysis",
-              desc: "Deep analysis of your technical knowledge, code quality, and problem-solving.",
+              desc: "View a versioned rubric assessment with evidence quotes after a completed real session. AI judgments are guidance, not proof of competence.",
               color: "from-emerald-500 to-green-600",
             },
             {
               icon: Activity,
-              title: "Communication Fingerprint",
-              desc: "Unique profile of your speaking patterns, pace, filler words, and clarity.",
+              title: "Measured metrics",
+              desc: "See metrics calculated from finalized transcript segments and timestamps; unavailable measurements include an explicit reason.",
               color: "from-pink-500 to-rose-600",
             },
             {
               icon: Sparkles,
               title: "AI Coaching",
-              desc: "Personalized 7-day improvement plans based on your performance data.",
+              desc: "Review saved practice exercises derived from the weakest categories in a completed evaluation.",
               color: "from-indigo-500 to-violet-600",
             },
           ].map((feature) => (

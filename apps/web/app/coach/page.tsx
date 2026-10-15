@@ -1,157 +1,119 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { interviewService } from "@/lib/services";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Play, Clock, CheckCircle2, ArrowRight } from "lucide-react";
-import Link from "next/link";
 import type { CoachingPlan } from "@/types";
+import type { EvaluationReport } from "@/lib/services/interviewService";
 
 export default function CoachPage() {
   const [plan, setPlan] = useState<CoachingPlan | null>(null);
-  const [activeTab, setActiveTab] = useState("plan");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [savingDay, setSavingDay] = useState<number | null>(null);
 
-  useEffect(() => {
-    interviewService.getCoachingPlan("int-001").then(setPlan);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const reports = await interviewService.getUserReports();
+      const candidates = reports
+        .filter((report: EvaluationReport) => report.status === "completed" && report.ai_assessments)
+        .sort((left, right) => (right.created_at ?? "").localeCompare(left.created_at ?? ""));
+      let latestPlan: CoachingPlan | null = null;
+      for (const report of candidates) {
+        try {
+          latestPlan = await interviewService.getCoachingPlan(report.session_id);
+          break;
+        } catch (cause) {
+          if (!(cause instanceof Error) || !cause.message.toLowerCase().includes("not found")) throw cause;
+        }
+      }
+      setPlan(latestPlan);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load your saved coaching plans.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (!plan) {
-    return (
-      <AppShell>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin h-8 w-8 border-2 border-violet-500 border-t-transparent rounded-full" />
-        </div>
-      </AppShell>
-    );
+  useEffect(() => { void load(); }, [load]);
+
+  async function updateDay(day: number, checked: boolean) {
+    if (!plan) return;
+    setSavingDay(day);
+    setError("");
+    try {
+      await interviewService.updateCoachingProgress(plan.interviewId, day, checked);
+      setPlan({
+        ...plan,
+        days: plan.days.map((item) => item.day === day ? { ...item, completed: checked } : item),
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save coaching progress.");
+    } finally {
+      setSavingDay(null);
+    }
   }
+
+  const completed = plan?.days.filter((day) => day.completed).length ?? 0;
+  const total = plan?.totalDays ?? 0;
+  const percent = total ? Math.round(completed / total * 100) : 0;
 
   return (
     <AppShell>
-      <div className="min-h-screen bg-[#0a0a0f]">
-        <div className="mx-auto max-w-5xl px-8 py-10">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-white">Your AI Coach</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Based on your performance, we created a personalized 7-day improvement plan.
-            </p>
-          </div>
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="bg-white/5 border border-white/10 p-1 rounded-lg">
-              <TabsTrigger value="plan" className="data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-300">
-                Improvement Plan
-              </TabsTrigger>
-              <TabsTrigger value="practice" className="data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-300">
-                Practice Mode
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="plan" className="space-y-6">
-              {/* Progress */}
-              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Weekly Progress</p>
-                    <p className="text-2xl font-bold text-white mt-1">Day 2 of 7</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-muted-foreground">Completion</p>
-                    <p className="text-2xl font-bold text-violet-400 mt-1">28%</p>
-                  </div>
+      <main className="min-h-screen bg-[#0a0a0f] px-4 py-8 text-white sm:px-8 sm:py-10">
+        <section className="mx-auto max-w-5xl space-y-7">
+          <header>
+            <h1 className="text-2xl font-bold">Coaching plan</h1>
+            <p className="mt-1 text-sm text-slate-300">Plans and progress saved from your completed real evaluations.</p>
+          </header>
+          {loading ? (
+            <div role="status" className="h-40 animate-pulse rounded-xl bg-white/5" aria-label="Loading coaching plan" />
+          ) : error ? (
+            <div><p role="alert" className="text-sm text-rose-300">{error}</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Retry</button></div>
+          ) : !plan ? (
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
+              <p role="status" className="text-sm text-slate-300">A personalized coaching plan appears after a real interview has a completed evaluation.</p>
+              <Link href="/interview/new" className="mt-4 inline-flex rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold hover:bg-violet-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Prepare an interview</Link>
+            </div>
+          ) : (
+            <>
+              <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5" aria-label="Coaching progress">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="font-medium">Completed {completed} of {total} activities</p>
+                  <p className="text-sm text-violet-200">{percent}%</p>
                 </div>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-500" style={{ width: "28%" }} />
+                <div className="mt-3 h-2 rounded-full bg-white/10">
+                  <div className="h-2 rounded-full bg-violet-500" style={{ width: `${percent}%` }} />
                 </div>
-              </div>
-
-              {/* Days */}
-              <div className="space-y-3">
+              </section>
+              <ul className="space-y-3">
                 {plan.days.map((day) => (
-                  <div
-                    key={day.day}
-                    className={`rounded-xl border p-5 transition-all ${
-                      day.completed
-                        ? "border-emerald-500/20 bg-emerald-500/[0.03]"
-                        : "border-white/[0.08] bg-white/[0.03]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                          day.completed ? "bg-emerald-500/20" : "bg-violet-500/10"
-                        }`}>
-                          {day.completed ? (
-                            <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                          ) : (
-                            <span className="text-sm font-bold text-violet-400">{day.day}</span>
-                          )}
-                        </div>
-                        <div>
-                          <p className={`text-sm font-medium ${day.completed ? "text-emerald-300" : "text-white"}`}>
-                            Day {day.day} — {day.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{day.description}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {day.duration}
-                        </span>
-                        {!day.completed && (
-                          <button className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-xs font-medium text-violet-300 hover:bg-violet-500/20 transition-colors">
-                            <Play className="h-3 w-3" />
-                            Start
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <li key={day.day} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={day.completed}
+                        disabled={savingDay === day.day}
+                        onChange={(event) => void updateDay(day.day, event.target.checked)}
+                        aria-label={`Mark day ${day.day}: ${day.title} complete`}
+                        className="mt-1 h-4 w-4 accent-violet-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-medium">Day {day.day} — {day.title}</span>
+                        <span className="mt-1 block text-sm text-slate-300">{day.description}</span>
+                        <span className="mt-2 block text-xs text-slate-400">Estimated time: {day.duration}</span>
+                      </span>
+                    </label>
+                  </li>
                 ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="practice" className="space-y-6">
-              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-8">
-                <h3 className="text-lg font-semibold text-white mb-2">Practice Mode</h3>
-                <p className="text-sm text-muted-foreground mb-6">Answer interview questions and get instant AI feedback.</p>
-                
-                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-6 mb-6">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Question</p>
-                  <p className="text-base text-white leading-relaxed">
-                    &quot;Explain how JWT authentication works and when you would use it over session-based auth.&quot;
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">01:00</span>
-                  </div>
-                  <div className="h-1.5 flex-1 rounded-full bg-white/10 overflow-hidden max-w-xs">
-                    <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 w-0 animate-shimmer" />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all">
-                    <Play className="h-4 w-4" />
-                    Start Recording
-                  </button>
-                  <Link
-                    href="/coach/try-again/1"
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-6 py-2.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-white/10 transition-all"
-                  >
-                    View Try Again Comparison
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
+              </ul>
+            </>
+          )}
+        </section>
+      </main>
     </AppShell>
   );
 }

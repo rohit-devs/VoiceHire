@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { apiInterviewService } from "@/lib/services/apiInterviewService";
-import type { EvaluationReport } from "@/lib/services/interviewService";
+import type { EvaluationReport, PersistedTranscriptEntry } from "@/lib/services/interviewService";
 
 function MetricCard({ label, metric }: {
   label: string;
@@ -29,6 +29,7 @@ export default function ReportPage() {
   const params = useParams();
   const interviewId = params.id as string;
   const [report, setReport] = useState<EvaluationReport | null>(null);
+  const [transcript, setTranscript] = useState<PersistedTranscriptEntry[]>([]);
   const [error, setError] = useState("");
   const [progressError, setProgressError] = useState("");
   const [checkedDays, setCheckedDays] = useState<Set<number>>(new Set());
@@ -36,8 +37,14 @@ export default function ReportPage() {
 
   useEffect(() => {
     let active = true;
-    void apiInterviewService.getReport(interviewId).then((data) => {
-      if (active) setReport(data);
+    void Promise.all([
+      apiInterviewService.getReport(interviewId),
+      apiInterviewService.getTranscript(interviewId),
+    ]).then(([data, entries]) => {
+      if (active) {
+        setReport(data);
+        setTranscript(entries);
+      }
       if (data.ai_assessments) {
         void apiInterviewService.getCoachingPlan(interviewId).then((plan) => {
           if (active) {
@@ -84,7 +91,7 @@ export default function ReportPage() {
           {loading ? (
             <p role="status" className="text-muted-foreground">Loading persisted report…</p>
           ) : error ? (
-            <p role="status" className="text-muted-foreground">{error}</p>
+            <div><p role="alert" className="text-rose-300">{error}</p><button onClick={() => window.location.reload()} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Retry</button></div>
           ) : report?.status === "failed" ? (
             <p role="alert" className="text-amber-300">
               Evaluation failed: {report.error || "No assessment was stored."}
@@ -148,9 +155,15 @@ export default function ReportPage() {
                   </div>
                   <div className="space-y-3">
                     <h3 className="text-lg font-semibold text-white">Per-question evidence</h3>
-                    {report.ai_assessments.per_question_analysis.map((item) => (
+                    {report.ai_assessments.per_question_analysis.map((item, index) => (
                       <article key={item.question_id} className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-5">
                         <h4 className="font-medium text-white">{item.question}</h4>
+                        <div className="rounded-lg border border-white/10 bg-black/10 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Saved candidate answer</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">
+                            {transcript.filter((entry) => entry.speaker === "candidate")[index]?.text ?? "No matching saved answer is available."}
+                          </p>
+                        </div>
                         <blockquote className="border-l-2 border-violet-400 pl-3 text-sm text-violet-100">
                           “{item.evidence_quote}”
                         </blockquote>

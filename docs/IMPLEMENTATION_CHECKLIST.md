@@ -116,6 +116,10 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - Demo-mode banner identifies when demo features are enabled; each simulated interview is separately opted into and labeled.
 - The pnpm workspace discovers the web, API script package, database, and prompts workspaces.
 - Frontend `apps/web/lib` files are tracked; a targeted scan of all six files found no matching hardcoded secret patterns.
+- Dashboard, interviews, reports, coaching, progress, and settings now load through the typed API service with loading, empty, and retryable error states; mock dashboard/interview services and the unused user store were removed.
+- Clerk middleware protects application routes; sign-in, sign-up, and onboarding pages are present. Onboarding persists target role and background through the authenticated profile API, and API requests obtain a fresh Clerk token.
+- Interview setup supports resume text/upload and job description or category input, while the live room displays persisted transcript entries and labels simulated sessions.
+- Service error handling has Vitest coverage. Playwright smoke tests cover the landing page, unauthenticated redirect, setup validation, and a simulated interview; browser execution is blocked locally by missing Clerk credentials (see latest revalidation).
 - SQLAlchemy models and Alembic migrations are the backend schema authority; the web app does not import Prisma Client, so the unused Prisma package and duplicate handwritten SQL schema were removed.
 - The initial Alembic migration creates the schema on fresh SQLite, downgrades cleanly, and reports no model drift with `alembic check`.
 - Backend persistence paths use SQLAlchemy models/typed statements; tests cover schema constraints, idempotency replay, and initialization on an empty database.
@@ -134,11 +138,10 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 
 - Backend `pnpm type-check` is not clean. The configured mypy run reports an untyped `agora_token_builder` import and a NumPy stub syntax issue under its configured Python 3.11 target. An additional run with `mypy --python-version 3.12 app/` reports 41 errors across 12 files.
 - Root `pnpm lint` is not clean: Pylint exits 28 with a 7.22/10 score. Frontend lint itself passes with two existing `<img>` optimization warnings.
-- `/api/users/register` is still a placeholder endpoint and does not persist a registration.
 
 ### Missing
 
-- No full browser-to-API interview/evaluation smoke test is in place.
+- A successful browser-to-API interview/evaluation smoke run has not yet been observed; Playwright scenarios exist but require Clerk credentials and authenticated browser storage state.
 - No CI result has yet been observed on GitHub; the workflow has been added locally.
 
 ### Blocked by credentials or environment
@@ -191,9 +194,92 @@ Known failures and caveats:
 
 ## Remaining
 
+- Clerk-hosted sign-in/sign-up integration remains unverified locally because no Clerk credentials are configured. The local demo sign-in and simulated interview browser path is verified separately below.
 - Resolve backend mypy and Pylint findings without disabling checks.
 - Run the added pull-request workflow on GitHub and address any environment-specific failures.
 - Add real-service end-to-end coverage when credentials and services are available.
-- Implement measured response analysis and report generation before exposing evaluation scores or communication metrics.
 - Retry `docker compose up -d postgres` and `alembic upgrade head` against the Compose PostgreSQL/pgvector service when Docker Desktop is healthy.
 - Plan an explicit, data-preserving adoption migration before upgrading any pre-existing database created by the removed handwritten schema.
+
+## Real-data UI and auth delivery revalidation
+
+### Implemented
+
+- Removed the hardcoded/mock dashboard and interview-service paths. Dashboard, session history, reports, coaching progress, and profile/settings now read or update backend data through the API service. Empty states do not invent scores, and demo records remain identified as simulated.
+- Added Clerk-protected application routes, sign-in/sign-up routes, and an onboarding form that persists profile details and target role. API token retrieval is refreshed per request.
+- Added service-layer tests and Playwright tests for public landing, unauthenticated redirect, setup validation, and simulated interview flow.
+- Added persisted transcript retrieval and included candidate answers alongside report evidence on report detail.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` | Exit 0; lockfiles already up to date. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; no errors or warnings. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
+| `pnpm --filter @voicehire/web build` | Exit 0; production build passed with dependency Edge Runtime warnings from Next/Clerk dependencies. |
+| `python -m pytest tests/ -q` (from `apps/api`) | Exit 0; 39 passed, 34 Pydantic deprecation warnings. |
+| `alembic upgrade head` then `alembic downgrade base` (fresh SQLite DB) | Both exited 0, including the user-preferences migration. |
+| `pnpm exec playwright test --grep-invert "authenticated interview flows"` (from `apps/web`) | Exit 1 before smoke tests completed. Next.js middleware repeatedly reported `Missing Clerk Secret Key or API Key`; no Clerk credentials are configured locally. |
+| `git diff --check` | Exit 0; only Git line-ending conversion notices. |
+
+### Blocked and remaining
+
+- No Clerk secret/publishable keys are available. Clerk-hosted sign-in/sign-up remains unverified; the local demo sign-in and end-to-end simulated interview are verified below.
+- The previously running Next.js process on port 3000 was left untouched. Playwright uses port 3001 to avoid taking over that process.
+- Clerk-hosted sign-in/sign-up remains unverified without test credentials. The local-demo setup and simulated interview path is verified in the end-to-end baseline below. No live Clerk, Agora, or OpenAI integration is claimed.
+
+## Whole-system E2E and deployment baseline
+
+### Feature inventory
+
+| Area | Status | Evidence / limitation |
+|---|---|---|
+| API persistence, migrations, session ownership, report/coaching ownership | Implemented and verified | Backend tests cover SQLite migrations, session lifecycle, report persistence and idempotency, coaching progress, simulated-session isolation, unavailable providers, and cross-user access denial. |
+| Landing, local demo login, onboarding/profile persistence, interview setup | Implemented and browser-verified | Playwright completes the local demo profile save and validates its persisted target role; setup requires real resume and job context. |
+| Simulated text interview | Implemented and browser-verified | Playwright creates and starts an explicitly opted-in demo, submits a candidate answer, checks the persisted transcript, reloads the room, ends the interview, and verifies that no real evaluation is generated. |
+| Real OpenAI report and coaching flow | Implemented and backend-tested with FakeProvider; live provider unverified | Demo sessions intentionally cannot create a real evaluation or real coaching plan. Backend tests exercise the real-session FakeProvider route and persistence. No OpenAI key was used. |
+| User A/User B isolation | Implemented and backend-tested | Cross-user session/report/coaching access is rejected by API tests; browser E2E does not provision two separate Clerk accounts. |
+| Agora voice | Partial / unverified | SDK import is deferred to the browser so Next.js server rendering succeeds. No Agora credentials or live two-minute voice interview were available; text input remains usable. |
+| Clerk-hosted sign-in/sign-up | Partial / blocked by credentials | Local demo sign-in is verified. No Clerk test keys were configured, so hosted Clerk authentication was not exercised. |
+| Readiness and liveness | Implemented and verified locally | Fresh SQLite API instance returned HTTP 200 for `/api/health/ready`, `/api/health/live`, and `/`; provider states were `disabled` and database was `ok`. No secret values were returned. |
+| Docker/PostgreSQL/pgvector stack | Configuration verified; runtime blocked by Docker Engine | `docker compose config --quiet` passes. Docker Desktop returned HTTP 500 from its Linux engine pipe, so image builds, Compose startup, PostgreSQL migration, and container health checks were not verified. |
+| Redis | Explicitly unused | Compose includes Redis for infrastructure testing; readiness reports it disabled because application runtime does not use it. |
+| Deployment / GitHub CI | Not verified | No production URL was deployed. The workflow file exists, but no GitHub Actions run was executed in this session. |
+
+### Latest command results
+
+| Command / check | Result |
+|---|---|
+| `pnpm --filter @voicehire/web exec playwright test --workers=1` | Exit 0; 3 passed (landing; local demo onboarding persistence; simulated interview create/start/answer/transcript/reload/end and evaluation isolation). Earlier attempts exposed test-step/response-shape issues and an SSR import error; those were corrected before this passing run. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`) after making Agora SDK runtime import browser-only. |
+| `pnpm --filter @voicehire/web lint` | Exit 0; no warnings or errors. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 built all application routes. |
+| `apps\\api\\.venv\\Scripts\\python.exe -m pytest apps\\api\\tests -q` | Exit 0; 43 passed, 39 deprecation warnings. |
+| `docker compose config --quiet` | Exit 0 after local-only port bindings and demo-off Compose defaults. |
+| `docker info --format '{{.ServerVersion}}'` | Docker Engine unavailable: API call to `//./pipe/dockerDesktopLinuxEngine` returned HTTP 500. |
+| `pnpm audit --prod` | Exit 1; 30 findings: 2 critical, 12 high, 13 moderate, 3 low. Both critical findings affect Next.js 14 and require Next.js `>=15.5.24` per the audit advisories; no framework-major upgrade was attempted. |
+| `python -m pip_audit --path apps\\api\\.venv\\Lib\\site-packages` | Exit 1; 60 known advisory records across 12 packages (including FastAPI/Starlette, python-multipart, python-jose, requests, and dev tools). The editable local `voicehire-api` package is skipped because it is not a PyPI distribution. |
+| Local credential-pattern scan (138 non-ignored working files) | No credential-shaped matches after replacing the test-only placeholder. |
+| Git-history credential-pattern scan (3,811,894 patch bytes) | Four OpenAI-shaped matches were confined to prior test-fixture placeholders in `apps/api/tests/conftest.py`; no production credential pattern was found. This scan does not rewrite history. |
+| Built browser bundle scan (39 static files) | No server-only key names, OpenAI/Clerk credential patterns, or private-key markers found. |
+| API `GET /api/health/ready`, `/api/health/live`, and `/` | All returned HTTP 200 on a temporary local API process using a fresh SQLite database. |
+| `git diff --check` | Exit 0; only the repository's normal Windows line-ending conversion notices were printed. |
+
+### Security and deployment blockers
+
+- A security review identified that Compose's initial published ports and demo-on defaults could expose an unauthenticated local stack on an untrusted network. The Compose host ports now bind to `127.0.0.1`, and `DEMO_MODE` defaults to false unless explicitly enabled in the local `.env`; Compose syntax was revalidated. Do not enable demo mode on a network-accessible deployment.
+- The dependency audits are not clean. The two critical Next.js advisories require a major framework upgrade beyond the pinned Next.js 14 line; the Python report also contains known advisories in pinned runtime and development packages. These need a compatibility-tested remediation before production deployment.
+- The historical secret-pattern matches are dummy test values, not credentials. They were replaced in the current fixture; no actual credentials were printed or detected in current source or the built web bundle.
+- The Playwright journey validates the simulated path only. It does not fabricate or display a sample score, does not generate a report from a demo session, and does not claim live Agora, OpenAI, Clerk, or PostgreSQL behavior.
+- The CI workflow and deployment configuration exist, but GitHub CI, container builds, and any production URL remain unverified.
+
+### Prioritized remaining work
+
+1. Resolve the audited frontend and Python dependency vulnerabilities with compatibility checks and rerun both audits.
+2. Restore Docker Engine; build and start the Compose stack, then verify PostgreSQL/pgvector migrations and all service health checks.
+3. Configure Clerk, OpenAI, and Agora credentials in a safe test environment; verify hosted auth, real report persistence, and a manual voice interview without exposing keys.
+4. Run the checked-in workflow on GitHub and address any CI-only issues.
+5. Keep the shared demo user local-only; use separate authenticated accounts for a browser-level user-isolation E2E.

@@ -13,7 +13,6 @@ export default function PrepareInterviewPage() {
   const interviewId = params.id as string;
   const { currentInterview, setInterviewPhase } = useInterviewStore();
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
     if (!currentInterview || currentInterview.id !== interviewId) {
@@ -27,16 +26,6 @@ export default function PrepareInterviewPage() {
       setLoading(false);
     }
   }, [interviewId, currentInterview]);
-
-  useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (countdown === 0) {
-      setInterviewPhase("live");
-      router.push(`/interview/live/${interviewId}`);
-    }
-  }, [countdown, router, interviewId, setInterviewPhase]);
 
   if (loading) {
     return (

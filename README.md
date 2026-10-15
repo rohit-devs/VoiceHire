@@ -1,336 +1,60 @@
-# 🎤 VoiceHire - Real-Time AI Interview Performance Engine
+# VoiceHire
 
-A cutting-edge platform that evaluates how candidates perform under pressure through bidirectional AI voice interviews with adaptive follow-ups, resume-based personalization, and post-session performance coaching.
+VoiceHire is a Next.js 14 and FastAPI application for practicing job interviews. The API persists interview sessions, transcripts, evidence-based reports, and coaching progress. SQLAlchemy models and Alembic migrations are the backend schema authority.
 
-## 📋 Project Structure
+## Current capabilities
 
-```
-voicehire/
-├── apps/
-│   ├── web/                    # Next.js 14+ frontend (TypeScript, Tailwind)
-│   │   ├── app/                # App Router
-│   │   ├── components/         # React components (VoiceOrb, MetricsPanel, etc.)
-│   │   ├── lib/                # Utilities, API clients
-│   │   ├── hooks/              # Custom React hooks
-│   │   └── types/              # TypeScript types
-│   └── api/                    # FastAPI backend (Python 3.11+)
-│       ├── app/
-│       │   ├── main.py         # FastAPI app entry point
-│       │   ├── config.py       # Settings and configuration
-│       │   ├── database.py     # Database connection and migration setup
-│       │   ├── models.py       # Authoritative SQLAlchemy schema
-│       │   ├── routers/        # API route handlers
-│       │   │   ├── agora.py    # Agora RTC tokens & events
-│       │   │   ├── interviews.py # Interview session management
-│       │   │   ├── users.py    # User management
-│       │   │   ├── evaluations.py # Reports & coaching plans
-│       │   │   └── health.py   # Health checks
-│       │   └── models/         # SQLAlchemy ORM models
-│       └── pyproject.toml      # Python dependencies
-├── apps/api/alembic/           # Versioned SQLAlchemy schema migrations
-├── packages/
-│   └── prompts/                # Version-controlled prompt configs (YAML/JSON)
-│       ├── interviewer.yaml    # Master interviewer system prompt
-│       └── evaluator.yaml      # Evaluation agent prompt
-├── .env.example                # Environment variables template
-├── .gitignore                  # Git ignore rules
-└── package.json                # Monorepo root (pnpm workspaces)
+- Clerk authentication for configured deployments, with a clearly labeled shared local demo user when `APP_ENV=development` and `DEMO_MODE=true`.
+- Interview setup from candidate resume text and a job description or role category.
+- Text interview flow, plus optional Agora RTC and browser speech features when configured and supported.
+- Deterministic interviewer behavior for explicitly selected simulated demo sessions.
+- Persisted reports and coaching plans for completed real sessions when OpenAI is configured. Simulated sessions do not generate real evaluations.
+- SQLite for local development and PostgreSQL with pgvector for Compose/deployment.
+
+Real Agora connectivity, real OpenAI evaluation, and production deployment require provider configuration. Demo outputs are marked as simulated and must not be treated as evidence of candidate competence. No production deployment is claimed by this repository documentation.
+
+## Run locally
+
+For a complete Docker stack, copy `.env.example` to `.env` and run:
+
+```sh
+docker compose up --build
 ```
 
-## 🚀 Phase 1: Foundation & Infrastructure ✅
+Open the web app at <http://localhost:3000>. The API is at <http://localhost:8000>; readiness and liveness are available at `/api/health/ready` and `/api/health/live`. Compose runs Alembic migrations before starting the API, and binds published ports to loopback only. The example `.env` opts into the shared local demo user; without that explicit config demo mode defaults off. Never use the shared demo user with real candidate data.
 
-### Completed Setup
+For native development, installation, environment setup, migrations, and Windows-specific commands, see [SETUP_GUIDE.md](./SETUP_GUIDE.md).
 
-- ✅ **Monorepo Setup**: pnpm workspaces configured
-- ✅ **Environment Configuration**: `.env.example` with all required secrets
-- ✅ **Database Schema**: SQLAlchemy models with Alembic migrations (SQLite/PostgreSQL)
-- ✅ **FastAPI Backend**: Scaffolded with core routers
-- ✅ **Next.js Frontend**: Initialized with TypeScript & Tailwind
-- ✅ **Authentication**: Clerk integration prepared
+## Verification
 
-### Key Infrastructure Files
-
-| File | Purpose |
-|------|---------|
-| `pyproject.toml` | Python dependencies (FastAPI, SQLAlchemy, Pydantic v2) |
-| `apps/api/app/models.py` | Authoritative SQLAlchemy schema |
-| `apps/api/alembic/` | Versioned database migrations |
-| `apps/api/app/config.py` | Centralized configuration (secrets via env vars) |
-| `.env.example` | Template for all required environment variables |
-
-## 🎤 Phase 2: Real-Time Voice Pipeline ✅ (In Progress)
-
-### Completed Components (40% of Phase 2)
-
-#### Backend Infrastructure
-- ✅ **Agora Token Generation** (`apps/api/app/agora_utils.py`)
-  - Secure server-side token generation
-  - Channel name validation
-  - Session state tracking
-
-- ✅ **WebSocket Manager** (`apps/api/app/websocket_manager.py`)
-  - Real-time transcript broadcasting
-  - Live metrics streaming
-  - State change notifications
-  - Session-isolated connection management
-
-- ✅ **Demo Session Manager** (`apps/api/app/demo_manager.py`)
-  - Simulates realistic interview flow
-  - Auto-generates transcript and metrics
-  - Perfect for testing and demos
-
-#### Frontend Components
-- ✅ **VoiceOrb Component** (`apps/web/components/VoiceOrb.tsx`)
-  - Animated SVG showing audio activity
-  - Real-time audio level visualization
-  - State-based coloring (AI/Candidate/Idle)
-
-- ✅ **Interview Room Demo Page** (`apps/web/app/interview/room/page.tsx`)
-  - Complete UI for interview sessions
-  - Live transcript display
-  - Metrics panel with gauge charts
-  - Connection status indicators
-
-#### React Hooks
-- ✅ **useInterviewWebSocket.ts** - WebSocket connection management
-- ✅ **useAgoraRTC.ts** - Agora RTC client lifecycle
-- ✅ **useFetchAgoraToken.ts** - Secure token fetching
-
-### Remaining Phase 2 Tasks (60% to complete)
-- ⏳ Agora Agents SDK integration (AI agent spawning)
-- ⏳ Real-time metrics calculation (WPM, clarity, confidence)
-- ⏳ State machine for interview flow orchestration
-- ⏳ Response analyzer agent (LLM-based evaluation)
-- ⏳ Enhanced UI components (Live Metrics Panel, Transcript Display)
-
-### Quick Demo
-
-See Phase 2 in action instantly:
-
-```bash
-# 1. Start backend & frontend (see Getting Started below)
-# 2. Visit: http://localhost:3000
-# 3. Click "Demo Interview Room"
-# 4. Click "Start Interview"
-# 5. Watch real-time transcript and metrics stream live!
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @voicehire/web type-check
+pnpm --filter @voicehire/web lint
+pnpm --filter @voicehire/web test
+pnpm --filter @voicehire/web test:e2e
+pnpm --filter @voicehire/web build
 ```
 
-**Note**: Demo sessions auto-start when session ID starts with `demo-` (no Agora microphone needed for testing UI)
+Backend tests (from `apps/api`):
 
-## ⚙️ Getting Started
-
-### Prerequisites
-
-- **Node.js** 18+
-- **Python** 3.11+
-- **pnpm** (install via `npm install -g pnpm`)
-- **PostgreSQL** with pgvector, or SQLite for local demo
-
-### Installation
-
-1. **Clone and Install Dependencies**
-   ```bash
-   cd voicehire
-   pnpm install
-   ```
-
-2. **Configure Environment**
-   ```bash
-   cp .env.example .env.local
-   # Edit .env.local with your actual credentials:
-   # - Clerk API keys
-   # - PostgreSQL connection string
-   # - Agora credentials
-   # - OpenAI API key
-   ```
-
-3. **Install API dependencies and initialize database**
-   ```bash
-   cd apps/api
-   python -m pip install -e ".[dev]"
-   alembic upgrade head
-   ```
-
-### Development
-
-Start both frontend and backend in parallel:
-
-```bash
-# From root directory
-pnpm dev
+```sh
+python -m pip install -e ".[dev]"
+python -m pytest tests/ -v
 ```
 
-Or separately:
+The end-to-end browser suite starts an isolated local SQLite API and Next.js server with an explicit demo user. Cross-user access, provider outages, missing keys, database migrations, and evaluation behavior are also covered by backend tests. Consult [docs/IMPLEMENTATION_CHECKLIST.md](./docs/IMPLEMENTATION_CHECKLIST.md) for current verification results and known limitations.
 
-```bash
-# Terminal 1: Frontend (Next.js on port 3000)
-cd apps/web
-pnpm dev
+## Deployment
 
-# Terminal 2: Backend (FastAPI on port 8000)
-cd apps/api
-python -m uvicorn app.main:app --reload --port 8000
-```
+See [DEPLOYMENT.md](./DEPLOYMENT.md) and [docs/DEPLOYMENT_CHECKLIST.md](./docs/DEPLOYMENT_CHECKLIST.md) for Vercel web deployment, Railway/Render API deployment, migration, Clerk, CORS, and secret configuration. Keep server-only credentials in server secret stores; never expose OpenAI keys, Agora certificates, or Clerk secret keys through `NEXT_PUBLIC_*` variables.
 
-### API Endpoints (Phase 1 - Scaffolded)
+## Architecture and operations
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/health/ready` | GET | Readiness probe |
-| `/api/health/live` | GET | Liveness probe |
-| `/api/agora/token` | POST | Generate Agora RTC token |
-| `/api/users/register` | POST | Register new user |
-| `/api/users/me` | GET | Get current user profile |
-| `/api/interviews/sessions` | POST | Create interview session |
-| `/api/interviews/sessions/{id}` | GET | Get session details |
-| `/api/interviews/sessions/{id}/start` | POST | Start interview |
-| `/api/interviews/sessions/{id}/end` | POST | End interview |
-| `/api/evaluations/sessions/{id}/report` | GET | Get evaluation report |
-
-## 🗄️ Database Schema (Highlights)
-
-### Core Tables
-
-- **users** - User accounts linked to Clerk
-- **candidate_profiles** - Parsed resume data with embeddings
-- **interview_sessions** - Active/completed interviews with state tracking
-- **transcripts** - Real-time speech transcriptions with metrics
-- **evaluation_reports** - Post-session scores & coaching plans
-- **interview_analytics** - Detailed metrics (WPM, filler words, state transitions)
-- **job_descriptions** - JD embeddings for RAG-based personalization
-- **coaching_plans** - 7-day improvement plans with progress tracking
-
-Tables use foreign keys, database constraints, indexes, and creation/update timestamps. JSON values use portable SQLAlchemy JSON columns; job-description embeddings use pgvector on PostgreSQL. The web app does not use Prisma Client, so the unused Prisma schema and duplicate SQL schema were removed. Redis is not used by the API.
-
-## 📚 Documentation
-
-### Setup & Development
-- **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** - Complete development environment setup and troubleshooting
-
-### Demo & Testing
-- **[DEMO_TESTING_GUIDE.md](./DEMO_TESTING_GUIDE.md)** - How to test Phase 2 demo with real-time interview simulation
-- Visit demo: `http://localhost:3000/interview/room?sessionId=demo-1`
-
-### Architecture & Progress
-- **[/memories/repo/voicehire-phase2-progress.md](/memories/repo/voicehire-phase2-progress.md)** - Detailed Phase 2 component status and architecture patterns
-- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Development workflows, debugging, and common tasks
-
-## 🔧 Technology Stack
-
-### Backend
-- **Framework**: FastAPI 0.109+ with async/await
-- **Database**: PostgreSQL 14+ with pgvector extension
-- **ORM**: SQLAlchemy 2.0 async + Alembic
-- **Auth**: Clerk (JWT tokens)
-- **Real-time**: WebSocket for transcript streaming
-- **Voice**: Agora RTC SDK for bidirectional audio
-
-### Frontend
-- **Framework**: Next.js 14+ with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Component State**: React hooks
-- **Audio Capture**: Agora RTC SDK
-- **Visualization**: Custom SVG (VoiceOrb), Recharts (metrics)
-- **Auth**: Clerk integration
-
-### Infrastructure
-- **Workspaces**: pnpm monorepo
-- **Python Runtime**: 3.11+
-- **Node Runtime**: 18+
-- **Environment**: .env.local (with secret management)
-
-## 🚀 Roadmap
-
-### Phase 1: ✅ Complete
-- Monorepo setup, database schema, authentication scaffolding
-
-### Phase 2: 🟡 In Progress (40% complete)
-- Real-time voice pipeline, Agora integration, WebSocket streaming, demo UI
-
-### Phase 3: ⏳ Planned
-- AI Interview Orchestrator (state machine, response analysis, scoring)
-- Integration with OpenAI GPT-4o-mini for response evaluation
-- Coaching recommendations engine
-
-### Phase 4: ⏳ Planned
-- Advanced Analytics Dashboard
-- Performance benchmarking and comparison
-- Multi-language support
-- Mobile app (React Native)
-
-### Phase 5: ⏳ Planned
-- Integration with ATS systems
-- Bulk candidate interviews
-- API for recruitment firms
-- Enterprise deployment options
-
-## 📞 Support
-
-For issues or questions:
-1. Check **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** troubleshooting section
-2. Review **[DEMO_TESTING_GUIDE.md](./DEMO_TESTING_GUIDE.md)** for common issues
-3. Check backend logs: `tail -f logs/backend.log`
-4. Check browser console for frontend errors (F12)
-5. See MongoDB logs if data pipeline is involved
-
-## 📝 License
-
-[Add your license here]
-
----
-
-**Status**: Phase 2 in active development | Last Updated: 2024 | Built with ❤️
-
-
-## 📦 Technology Stack
-
-### Frontend
-- **Next.js 14+** with App Router
-- **TypeScript** for type safety
-- **Tailwind CSS** + shadcn/ui for design
-- **Agora RTC SDK** for voice transmission
-- **Zustand** for state management
-- **Recharts** for data visualization (Communication Fingerprint)
-
-### Backend
-- **FastAPI** (Python 3.11+)
-- **Pydantic v2** for validation
-- **SQLAlchemy 2.0** with asyncio
-- **PostgreSQL** with pgvector for embeddings
-- **OpenAI GPT-4o-mini** for AI reasoning
-- **Agora Agents SDK** for real-time voice
-
-### Infrastructure
-- **Vercel** for frontend deployment
-- **Railway/Render** for backend deployment
-- **Supabase/AWS RDS** for PostgreSQL
-- **GitHub** for version control
-
-## 🔐 Security Notes
-
-1. **Secrets Management**
-   - All API keys stored in `.env.local` (never committed)
-   - Backend-only secrets (Agora Certificate, OpenAI Key, Database URL)
-   - JWT-based authentication for API endpoints
-
-2. **Database Security**
-   - Row-level security (RLS) policies to be implemented in Phase 2
-   - Clerk user ID as primary auth source
-
-3. **Voice Privacy**
-   - Transcripts encrypted at rest
-   - Agora tokens expire after 1 hour
-   - Audio streams isolated per session (channel-based)
-
-## 📈 What's Next: Phase 2
-
-Phase 2 will implement:
-- ✨ **Real-Time Voice Pipeline** (Agora RTC + ASR/TTS)
-- ✨ **AI Interview Orchestrator** (State machine, response analysis)
-- ✨ **VoiceOrb Component** (Live audio visualization)
-- ✨ **Agora Token Generation** (Secure backend tokens)
-
----
-
-**Built with ❤️ for candidates who want to ace their interviews.**
+- [SETUP_GUIDE.md](./SETUP_GUIDE.md) — Windows PowerShell and Linux/macOS setup.
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — deployment steps and environment configuration.
+- [docs/DEPLOYMENT_CHECKLIST.md](./docs/DEPLOYMENT_CHECKLIST.md) — release verification checklist.
+- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) — common local and provider issues.
+- [docs/database-setup.md](./docs/database-setup.md) — schema ownership and migration workflow.
+- [docs/VOICE_ARCHITECTURE.md](./docs/VOICE_ARCHITECTURE.md) — voice architecture and explicit capability limits.
+- [docs/IMPLEMENTATION_CHECKLIST.md](./docs/IMPLEMENTATION_CHECKLIST.md) — feature inventory, verified baseline, and remaining work.

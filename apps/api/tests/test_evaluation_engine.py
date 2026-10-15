@@ -263,6 +263,61 @@ async def test_missing_transcript_data_has_null_metrics_and_skips_provider():
 
 
 @pytest.mark.asyncio
+async def test_report_fails_explicitly_when_openai_is_not_configured(monkeypatch):
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built APIs and database services.",
+                "job_description": "Own reliable backend services.",
+                "is_demo": False,
+            },
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            assert session is not None
+            session.current_state = "completed"
+            session.status = "completed"
+            session.started_at = datetime.now(timezone.utc)
+            db.add_all(
+                [
+                    Transcript(
+                        session_id=session_id,
+                        speaker="interviewer",
+                        message="Describe an API performance improvement.",
+                        timestamp_ms=now_ms,
+                        source="real",
+                    ),
+                    Transcript(
+                        session_id=session_id,
+                        speaker="candidate",
+                        message="I improved API latency by adding a measured database index.",
+                        timestamp_ms=now_ms + 1000,
+                        duration_ms=5000,
+                        source="real",
+                    ),
+                ]
+            )
+            await db.commit()
+
+        response = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate"
+        )
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["status"] == "failed"
+    assert report["ai_assessments"] is None
+    assert "OpenAI provider is not configured" in report["error"]
+
+
+@pytest.mark.asyncio
 async def test_report_is_persisted_idempotently_with_measured_metrics_and_coaching(monkeypatch):
     from app.routers import evaluations
 

@@ -115,6 +115,29 @@ class TestAuthDemoMode:
         data = response.json()
         assert data["email"] == _DEMO_USER["email"]
 
+    @pytest.mark.asyncio
+    async def test_update_profile_background_role_and_preferences(self, client):
+        response = await client.put(
+            "/api/users/me",
+            json={
+                "first_name": "Demo",
+                "last_name": "Candidate",
+                "target_role": "Backend Engineer",
+                "background": "Built reliable async APIs.",
+                "default_interview_persona": "technical_lead",
+                "default_interview_difficulty": "hard",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["target_role"] == "Backend Engineer"
+        assert response.json()["background"] == "Built reliable async APIs."
+        assert response.json()["default_interview_difficulty"] == "hard"
+
+        profile = await client.get("/api/users/me")
+        assert profile.status_code == 200, profile.text
+        assert profile.json()["first_name"] == "Demo"
+        assert profile.json()["background"] == "Built reliable async APIs."
+
 
 class TestAuthNonDemoMode:
     """When DEMO_MODE=False, valid Bearer tokens are required."""
@@ -192,6 +215,18 @@ class TestOwnership:
         # Demo user tries to access other user's session
         response = await client.get(f"/api/interviews/sessions/{session_id}")
         assert response.status_code == 403, response.text
+        transcript_response = await client.get(
+            f"/api/interviews/sessions/{session_id}/transcript"
+        )
+        assert transcript_response.status_code == 403, transcript_response.text
+        report_response = await client.get(
+            f"/api/evaluations/sessions/{session_id}/report"
+        )
+        assert report_response.status_code == 403, report_response.text
+        coaching_response = await client.get(
+            f"/api/evaluations/sessions/{session_id}/coaching-plan"
+        )
+        assert coaching_response.status_code == 403, coaching_response.text
 
         # Cleanup
         db = async_session()

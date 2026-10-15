@@ -5,14 +5,11 @@ import { useEffect, useState } from "react";
 type AppMode = "demo" | "live" | "unknown";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const USE_REAL_API = process.env.NEXT_PUBLIC_USE_REAL_API !== "false";
 
 export default function DemoModeBanner() {
-  const [mode, setMode] = useState<AppMode>(USE_REAL_API ? "unknown" : "demo");
+  const [mode, setMode] = useState<AppMode>("unknown");
 
   useEffect(() => {
-    if (!USE_REAL_API) return;
-
     let active = true;
     fetch(`${API_URL}/`, { cache: "no-store" })
       .then(async (response) => {

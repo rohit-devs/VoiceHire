@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
@@ -75,6 +75,21 @@ export default function NewInterviewPage() {
     isDemo: false,
   });
 
+  useEffect(() => {
+    let active = true;
+    void interviewService.getProfile().then((profile) => {
+      if (!active) return;
+      setConfig((current) => ({
+        ...current,
+        persona: profile.default_interview_persona,
+        difficulty: profile.default_interview_difficulty,
+      }));
+    }).catch((cause: unknown) => {
+      if (active) setError(cause instanceof Error ? cause.message : "Unable to load saved interview preferences.");
+    });
+    return () => { active = false; };
+  }, []);
+
   const stepOrder: Step[] = ["role", "profile", "jd", "preferences", "review"];
   const currentStepIndex = stepOrder.indexOf(step);
 
@@ -85,7 +100,7 @@ export default function NewInterviewPage() {
   const canProceed = () => {
     switch (step) {
       case "role":
-        return config.role && config.experienceLevel && config.interviewType && config.company;
+        return Boolean(config.role.trim() && config.experienceLevel && config.interviewType);
       case "profile":
         return Boolean(config.resumeText.trim());
       case "jd":
@@ -200,9 +215,11 @@ export default function NewInterviewPage() {
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold text-white">Role & Interview Type</h2>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Job Role</label>
+                  <label htmlFor="interview-role" className="text-sm font-medium text-slate-300">Job Role</label>
                   <input
+                    id="interview-role"
                     type="text"
+                    required
                     value={config.role}
                     onChange={(e) => updateConfig({ role: e.target.value })}
                     placeholder="e.g. Full Stack Developer"
@@ -210,8 +227,9 @@ export default function NewInterviewPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Experience Level</label>
+                  <label htmlFor="experience-level" className="text-sm font-medium text-slate-300">Experience Level</label>
                   <select
+                    id="experience-level"
                     value={config.experienceLevel}
                     onChange={(e) => updateConfig({ experienceLevel: e.target.value })}
                     className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
@@ -237,6 +255,8 @@ export default function NewInterviewPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {INTERVIEW_TYPES.map((type) => (
                       <button
+                        type="button"
+                        aria-pressed={config.interviewType === type.value}
                         key={type.value}
                         onClick={() => updateConfig({ interviewType: type.value })}
                         className={`rounded-lg border p-4 text-left transition-all ${
@@ -257,9 +277,10 @@ export default function NewInterviewPage() {
             {step === "profile" && (
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold text-white">Candidate Profile</h2>
-                <label className="block space-y-2">
+                <label htmlFor="resume-text" className="block space-y-2">
                   <span className="text-sm font-medium text-slate-300">Resume text</span>
                   <textarea
+                    id="resume-text"
                     value={config.resumeText}
                     onChange={(event) => updateConfig({ resumeText: event.target.value })}
                     placeholder="Paste your resume text here. It will be used to tailor interview questions."
@@ -269,6 +290,30 @@ export default function NewInterviewPage() {
                   />
                   <span className="text-xs text-muted-foreground">{config.resumeText.length}/20,000 characters</span>
                 </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Or upload a plain-text resume</span>
+                  <input
+                    type="file"
+                    accept=".txt,text/plain"
+                    aria-label="Upload a plain text resume"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 20000) {
+                        setError("Resume text files must be 20,000 bytes or smaller.");
+                        event.target.value = "";
+                        return;
+                      }
+                      try {
+                        updateConfig({ resumeText: await file.text() });
+                        setError("");
+                      } catch {
+                        setError("Unable to read this resume file. Paste the text instead.");
+                      }
+                    }}
+                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-violet-500/20 file:px-3 file:py-1.5 file:text-violet-100"
+                  />
+                </label>
               </div>
             )}
 
@@ -276,8 +321,9 @@ export default function NewInterviewPage() {
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold text-white">Job Description</h2>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Paste Job Description</label>
+                  <label htmlFor="job-description" className="text-sm font-medium text-slate-300">Paste Job Description</label>
                   <textarea
+                    id="job-description"
                     value={config.jdText}
                     onChange={(e) => updateConfig({ jdText: e.target.value })}
                     placeholder="Paste the job description, or provide a job category below."
@@ -309,6 +355,8 @@ export default function NewInterviewPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {PERSONAS.map((p) => (
                       <button
+                        type="button"
+                        aria-pressed={config.persona === p.value}
                         key={p.value}
                         onClick={() => updateConfig({ persona: p.value })}
                         className={`rounded-lg border p-4 text-left transition-all ${
@@ -326,6 +374,7 @@ export default function NewInterviewPage() {
 
                 <label className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
                   <input
+                    aria-label="Simulated demo"
                     type="checkbox"
                     checked={config.isDemo}
                     onChange={(event) => updateConfig({ isDemo: event.target.checked })}
@@ -342,6 +391,8 @@ export default function NewInterviewPage() {
                   <div className="grid grid-cols-3 gap-3">
                     {DIFFICULTIES.map((d) => (
                       <button
+                        type="button"
+                        aria-pressed={config.difficulty === d.value}
                         key={d.value}
                         onClick={() => updateConfig({ difficulty: d.value })}
                         className={`rounded-lg border p-3 text-center transition-all ${
@@ -356,28 +407,13 @@ export default function NewInterviewPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] p-4">
-                  <div>
-                    <p className="text-sm font-medium text-white">Pressure Mode</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">AI interrupts and challenges your answers</p>
-                  </div>
-                  <button
-                    onClick={() => updateConfig({ pressureMode: !config.pressureMode })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      config.pressureMode ? "bg-violet-600" : "bg-white/10"
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-                      config.pressureMode ? "translate-x-6" : "translate-x-1"
-                    }`} />
-                  </button>
-                </div>
-
                 <div className="space-y-3">
                   <label className="text-sm font-medium text-slate-300">Duration</label>
                   <div className="grid grid-cols-3 gap-3">
                     {DURATIONS.map((d) => (
                       <button
+                        type="button"
+                        aria-pressed={config.duration === d.value}
                         key={d.value}
                         onClick={() => updateConfig({ duration: d.value })}
                         className={`rounded-lg border p-3 text-center transition-all ${
@@ -404,7 +440,6 @@ export default function NewInterviewPage() {
                   <ReviewRow label="Type" value={config.interviewType?.replace("_", " ") || ""} />
                   <ReviewRow label="Persona" value={PERSONAS.find(p => p.value === config.persona)?.label || ""} />
                   <ReviewRow label="Difficulty" value={config.difficulty} />
-                  <ReviewRow label="Pressure Mode" value={config.pressureMode ? "Enabled" : "Disabled"} />
                   <ReviewRow label="Duration" value={`${config.duration} min`} />
                   <ReviewRow label="Resume" value={`${config.resumeText.length} characters provided`} />
                   <ReviewRow label="Job context" value={config.jdText.trim() ? "Job description provided" : config.jobCategory} />

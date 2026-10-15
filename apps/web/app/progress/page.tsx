@@ -1,164 +1,88 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { interviewService } from "@/lib/services";
-import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { TrendingUp } from "lucide-react";
 import type { PerformanceHistory } from "@/types";
 
-type MetricKey = "overallScore" | "technical" | "communication" | "clarity" | "conciseness" | "fillerWords" | "speakingPace";
-
-const METRICS: { key: MetricKey; label: string; color: string }[] = [
-  { key: "overallScore", label: "Overall Score", color: "#8b5cf6" },
-  { key: "technical", label: "Technical", color: "#3b82f6" },
-  { key: "communication", label: "Communication", color: "#10b981" },
-  { key: "clarity", label: "Clarity", color: "#ec4899" },
-  { key: "conciseness", label: "Conciseness", color: "#06b6d4" },
-  { key: "fillerWords", label: "Filler Words", color: "#ef4444" },
-  { key: "speakingPace", label: "Speaking Pace", color: "#84cc16" },
+const RANGES = [
+  { value: 7, label: "7 days" },
+  { value: 30, label: "30 days" },
+  { value: 90, label: "90 days" },
 ];
 
 export default function ProgressPage() {
   const [history, setHistory] = useState<PerformanceHistory[]>([]);
+  const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
-  const [activeMetric, setActiveMetric] = useState<MetricKey>("overallScore");
-  const [timeRange, setTimeRange] = useState("30");
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    interviewService.getPerformanceHistory(30).then((h) => {
-      setHistory(h);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setHistory(await interviewService.getPerformanceHistory(days));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load evaluation history.");
+    } finally {
       setLoading(false);
-    });
-  }, []);
+    }
+  }, [days]);
 
-  if (loading) {
-    return (
-      <AppShell>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin h-8 w-8 border-2 border-violet-500 border-t-transparent rounded-full" />
-        </div>
-      </AppShell>
-    );
-  }
-
-  if (history.length === 0) {
-    return (
-      <AppShell>
-        <div className="flex min-h-screen items-center justify-center px-6">
-          <p role="status" className="max-w-lg text-center text-muted-foreground">
-            Insufficient verified interview data is available to show progress metrics.
-          </p>
-        </div>
-      </AppShell>
-    );
-  }
-
-  const metric = METRICS.find((m) => m.key === activeMetric);
-  const currentValue = history[history.length - 1]?.[activeMetric];
-  const previousValue = history[history.length - 7]?.[activeMetric] || history[0]?.[activeMetric];
-  const improvement = previousValue ? ((currentValue - previousValue) / previousValue * 100).toFixed(1) : 0;
+  useEffect(() => { void load(); }, [load]);
 
   return (
     <AppShell>
-      <div className="min-h-screen bg-[#0a0a0f]">
-        <div className="mx-auto max-w-6xl px-8 py-10">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-white">Progress Analytics</h1>
-            <p className="text-sm text-muted-foreground mt-1">Track your improvement over time</p>
+      <main className="min-h-screen bg-[#0a0a0f] px-4 py-8 text-white sm:px-8 sm:py-10">
+        <section className="mx-auto max-w-6xl space-y-6">
+          <header>
+            <h1 className="text-2xl font-bold">Progress</h1>
+            <p className="mt-1 text-sm text-slate-300">
+              Saved AI rubric judgments from completed real sessions only. Scores are guidance, not proof of competence.
+            </p>
+          </header>
+          <div className="flex flex-wrap gap-2" aria-label="Progress date range">
+            {RANGES.map((range) => (
+              <button
+                key={range.value}
+                aria-pressed={days === range.value}
+                onClick={() => setDays(range.value)}
+                className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300 aria-pressed:border-violet-400 aria-pressed:bg-violet-500/20"
+              >
+                {range.label}
+              </button>
+            ))}
           </div>
-
-          {/* Time Range */}
-          <div className="mb-6">
-            <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-1">
-              {["7", "30", "90", "all"].map((range) => (
-                <button
-                  key={range}
-                  onClick={() => setTimeRange(range)}
-                  className={`rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${
-                    timeRange === range
-                      ? "bg-violet-500/20 text-violet-300"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {range === "all" ? "All Time" : `${range} Days`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Improvement Card */}
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1">Performance Improvement</p>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-bold text-emerald-400">+{improvement}%</span>
-                  <span className="text-xs text-muted-foreground">vs last period</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Your communication score improved by {improvement}% across your recent interviews.</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-emerald-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* Metric Tabs */}
-          <div className="mb-5">
-            <div className="flex flex-wrap gap-1.5">
-              {METRICS.map((m) => (
-                <button
-                  key={m.key}
-                  onClick={() => setActiveMetric(m.key)}
-                  className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
-                    activeMetric === m.key
-                      ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
-                      : "bg-white/5 text-muted-foreground border border-white/10 hover:text-foreground"
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Chart */}
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-white">{metric?.label}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Current: {currentValue}{metric?.key === "fillerWords" ? "" : metric?.key === "speakingPace" ? " WPM" : "%"}</p>
-              </div>
-            </div>
-            <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={history}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="date" stroke="rgba(255,255,255,0.15)" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="rgba(255,255,255,0.15)" fontSize={10} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "rgba(15, 15, 20, 0.95)",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: "10px",
-                      color: "#fff",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey={activeMetric}
-                    stroke={metric?.color || "#8b5cf6"}
-                    strokeWidth={2}
-                    dot={{ fill: metric?.color || "#8b5cf6", strokeWidth: 2, r: 2.5 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      </div>
+          {loading ? (
+            <div role="status" className="h-72 animate-pulse rounded-xl bg-white/5" aria-label="Loading progress" />
+          ) : error ? (
+            <div><p role="alert" className="text-sm text-rose-300">{error}</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Retry</button></div>
+          ) : history.length === 0 ? (
+            <p role="status" className="rounded-xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
+              No completed real evaluations are available in this period. Incomplete and simulated sessions are not included.
+            </p>
+          ) : (
+            <>
+              <PerformanceChart data={history} />
+              <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+                <h2 className="text-lg font-semibold">Saved completed evaluations</h2>
+                <ul className="mt-4 divide-y divide-white/10">
+                  {history.map((entry) => (
+                    <li key={entry.sessionId} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                      <div>
+                        <p className="font-medium">{entry.role}</p>
+                        <time className="text-xs text-slate-300" dateTime={entry.date}>{new Date(entry.date).toLocaleDateString()}</time>
+                      </div>
+                      <span className="text-sm text-violet-200">AI rubric judgment {entry.overallScore.toFixed(2)} / 5</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </>
+          )}
+        </section>
+      </main>
     </AppShell>
   );
 }

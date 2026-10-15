@@ -98,6 +98,34 @@ async def test_token_is_limited_to_owned_interview_session_and_session_channel(m
 
 
 @pytest.mark.asyncio
+async def test_missing_agora_credentials_returns_text_fallback_error(monkeypatch):
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+    monkeypatch.setattr(settings, "AGORA_APP_ID", "")
+    monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built Python APIs.",
+                "job_category": "backend engineering",
+                "is_demo": True,
+            },
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+        started = await client.post(f"/api/interviews/sessions/{session_id}/start")
+        assert started.status_code == 200, started.text
+        response = await client.post(
+            "/api/agora/token", json={"session_id": session_id}
+        )
+        assert response.status_code == 503
+        assert "continue with text input" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "")

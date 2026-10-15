@@ -6,7 +6,7 @@ import { apiInterviewService as interviewService } from "@/lib/services/apiInter
 import { useInterviewStore } from "@/stores/interviewStore";
 import { useInterviewWebSocket } from "@/hooks/useInterviewWebSocket";
 import { useAgoraVoice, type AgoraVoiceState } from "@/hooks/useAgoraVoice";
-import { useAuth } from "@clerk/nextjs";
+import { getAuthToken } from "@/lib/services/apiInterviewService";
 import { VoiceOrb } from "@/components/interview/VoiceOrb";
 import { Loader2, ArrowRight, PhoneOff, Mic, MicOff } from "lucide-react";
 import {
@@ -35,7 +35,6 @@ export default function LiveInterviewPage() {
   const interviewId = params.id as string;
   const { setInterviewPhase, setSessionId } = useInterviewStore();
 
-  const { isLoaded: clerkLoaded, isSignedIn, getToken } = useAuth();
   const [authToken, setAuthTokenState] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -51,6 +50,8 @@ export default function LiveInterviewPage() {
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [speechRestartSignal, setSpeechRestartSignal] = useState(0);
   const [isDemo, setIsDemo] = useState(false);
+  const [interviewType, setInterviewType] = useState("Interview");
+  const [autoScroll, setAutoScroll] = useState(true);
   const [actionError, setActionError] = useState("");
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState("");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -82,14 +83,16 @@ export default function LiveInterviewPage() {
     unmute: unmuteAgora,
   } = useAgoraVoice({ sessionId, authToken });
 
-  // Load Clerk JWT for authenticated WebSocket/token requests
+  // Use the current Clerk token when configured; local demo mode intentionally has none.
   useEffect(() => {
-    if (!clerkLoaded) return;
-    (async () => {
-      const token = isSignedIn ? await getToken() : null;
-      setAuthTokenState(token);
-    })();
-  }, [clerkLoaded, isSignedIn, getToken]);
+    let active = true;
+    void getAuthToken().then((token) => {
+      if (active) setAuthTokenState(token);
+    }).catch((cause: unknown) => {
+      if (active) setActionError(cause instanceof Error ? cause.message : "Unable to load authentication.");
+    });
+    return () => { active = false; };
+  }, []);
 
   // Initialize the persisted session.
   useEffect(() => {
@@ -97,6 +100,7 @@ export default function LiveInterviewPage() {
       .then((session) => {
         if (!session) throw new Error("Interview session was not found.");
         setIsDemo(session.isDemo ?? false);
+        setInterviewType(session.interviewType.replace("_", " "));
         setSessionId(sessionId);
         setInterviewPhase("live");
         setLoading(false);
@@ -154,8 +158,8 @@ export default function LiveInterviewPage() {
 
   // Auto-scroll transcript
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcripts]);
+    if (autoScroll) transcriptEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [autoScroll, transcripts]);
 
   // Timer
   useEffect(() => {
@@ -341,6 +345,7 @@ export default function LiveInterviewPage() {
   ]);
 
   const handleEndInterview = async () => {
+    if (!window.confirm("End this interview and save the session?")) return;
     setActionError("");
     try {
       await interviewService.endInterview(interviewId);
@@ -393,7 +398,7 @@ export default function LiveInterviewPage() {
   return (
     <div className="h-screen w-full bg-[#0a0a0f] flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="h-12 border-b border-white/[0.08] bg-[#0a0a0f] flex items-center justify-between px-4 flex-shrink-0">
+      <header className="min-h-12 border-b border-white/[0.08] bg-[#0a0a0f] flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[13px] font-semibold text-white">Live Interview</span>
@@ -403,7 +408,7 @@ export default function LiveInterviewPage() {
             </span>
           )}
           <span className="text-[11px] text-muted-foreground px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
-            Technical Round
+            <span className="capitalize">{interviewType}</span>
           </span>
           {wsConnected && (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Live</span>
@@ -433,7 +438,7 @@ export default function LiveInterviewPage() {
       </header>
 
       {/* Main 3-Column Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden lg:flex-row">
         {/* Left Column - Session Info */}
         <div className="w-48 border-r border-white/[0.08] bg-[#0a0a0f] p-4 flex-col hidden md:flex">
           <div className="space-y-4">
@@ -660,15 +665,15 @@ export default function LiveInterviewPage() {
         </div>
 
         {/* Right Column - Transcript */}
-        <div className="w-80 border-l border-white/[0.08] bg-[#0a0a0f] flex flex-col hidden lg:flex">
+        <div className="h-52 w-full shrink-0 border-t border-white/[0.08] bg-[#0a0a0f] flex flex-col lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
           <div className="p-4 border-b border-white/[0.08] flex items-center justify-between">
             <h3 className="text-[13px] font-semibold text-white">Live Transcript</h3>
             <label className="flex items-center gap-1.5 cursor-pointer">
-              <input type="checkbox" defaultChecked className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/20" />
+              <input type="checkbox" checked={autoScroll} onChange={(event) => setAutoScroll(event.target.checked)} className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/20" />
               <span className="text-[11px] text-muted-foreground">Auto-scroll</span>
             </label>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div role="log" aria-label="Interview transcript" aria-live="polite" aria-relevant="additions" className="flex-1 overflow-y-auto p-4 space-y-3">
             {transcripts.map((t) => (
               <div
                 key={t.id}
