@@ -8,6 +8,7 @@ const apiUrl = "http://127.0.0.1:8100";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
+  timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
   use: {

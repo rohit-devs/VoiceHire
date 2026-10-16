@@ -1,8 +1,12 @@
-import { authMiddleware } from "@clerk/nextjs";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
 
-const clerkMiddleware = authMiddleware({
-  publicRoutes: ["/", "/sign-in(.*)", "/sign-up(.*)"],
+const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
+
+const clerkHandler = clerkMiddleware(async (auth, request) => {
+  if (!isPublicRoute(request)) {
+    await auth.protect();
+  }
 });
 
 export default function middleware(request: NextRequest, event: NextFetchEvent) {
@@ -12,7 +16,7 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
     !process.env.CLERK_SECRET_KEY &&
     !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   if (localDemoEnabled) return NextResponse.next();
-  return clerkMiddleware(request, event);
+  return clerkHandler(request, event);
 }
 
 export const config = {
