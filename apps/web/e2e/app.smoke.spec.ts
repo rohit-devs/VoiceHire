@@ -45,7 +45,20 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
   await page.getByRole("button", { name: /technical lead/i }).click();
   await page.getByRole("checkbox", { name: "Simulated demo" }).check();
   await page.getByRole("button", { name: "Continue" }).click();
+  const createSessionResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/interviews/sessions") &&
+      response.request().method() === "POST",
+  );
+  const startSessionResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/interviews/sessions/") &&
+      response.url().endsWith("/start"),
+  );
   await page.getByRole("button", { name: "Start Interview" }).click();
+  expect((await createSessionResponse).ok()).toBeTruthy();
+  expect((await startSessionResponse).ok()).toBeTruthy();
+  await expect(page).toHaveURL(/\/interview\/prepare\//);
   await page.getByRole("button", { name: "Enter Interview" }).click();
   await expect(page.getByText("Simulated demo", { exact: true })).toBeVisible();
 
@@ -54,24 +67,31 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
   await page.getByPlaceholder("Type your answer").fill(
     "I reduced database latency by adding a PostgreSQL index and measured the improvement in production.",
   );
+  const nextQuestionResponse = page.waitForResponse(
+    (response) => response.url().includes("/generate-question"),
+  );
   await page.getByRole("button", { name: "Submit Answer" }).click();
   await expect(page.getByText(/I reduced database latency/)).toBeVisible();
+  expect((await nextQuestionResponse).ok()).toBeTruthy();
 
   const sessionId = new URL(page.url()).pathname.split("/").pop();
   expect(sessionId).toBeTruthy();
-  const transcriptResponse = await page.request.get(
-    `${apiUrl}/api/interviews/sessions/${sessionId}/transcript`,
-  );
-  expect(transcriptResponse.ok()).toBeTruthy();
-  const transcript = await transcriptResponse.json();
-  expect(transcript.some((entry: { text: string }) =>
-    entry.text.includes("I reduced database latency"),
-  )).toBeTruthy();
+  await expect.poll(async () => {
+    const transcriptResponse = await page.request.get(
+      `${apiUrl}/api/interviews/sessions/${sessionId}/transcript`,
+    );
+    if (!transcriptResponse.ok()) return false;
+    const transcript = await transcriptResponse.json();
+    return transcript.some((entry: { text: string }) =>
+      entry.text.includes("I reduced database latency"),
+    );
+  }).toBeTruthy();
 
   await page.reload();
   await expect(page.getByText("Simulated demo", { exact: true })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "End Interview" }).click();
+  await expect(page).toHaveURL(new RegExp(`/interview/complete/${sessionId}$`));
   await expect(page.getByText(/real evaluations are not generated from simulated sessions/i)).toBeVisible();
 
   await page.goto(`/reports/${sessionId}`);

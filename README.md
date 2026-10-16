@@ -1,6 +1,6 @@
 # VoiceHire
 
-VoiceHire is a Next.js 14 and FastAPI application for practicing job interviews. The API persists interview sessions, transcripts, evidence-based reports, and coaching progress. SQLAlchemy models and Alembic migrations are the backend schema authority.
+VoiceHire is a Next.js 15.5 application with React 19 and Clerk 6, backed by FastAPI. The API persists interview sessions, transcripts, evidence-based reports, and coaching progress. SQLAlchemy models and Alembic migrations are the backend schema authority.
 
 ## Current capabilities
 
