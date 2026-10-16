@@ -1,6 +1,6 @@
 # Implementation Checklist and Baseline
 
-Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
+Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency remediation was revalidated on 2026-10-16.
 
 ## Current interview-flow task
 
@@ -12,7 +12,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - Simulated interviews require explicit `is_demo`, use FakeProvider only when demo mode is enabled, return `is_demo` and `source`, mark every transcript `source="simulated"`, show a “Simulated demo” UI badge, and cannot produce evaluations or enter real report listings.
 - Fabricated demo transcripts/metrics were removed. Evaluation reports return explicit `insufficient data`; transcript/timing analytics expose only defined evidence-based metrics, with null values and reasons when evidence is missing, and identify simulated data.
 - Frontend interview setup/live/prepare/complete screens use the API service, require pasted resume text, accept job-description text or a category, and no longer use canned questions, simulated candidate answers, guessed question totals, or hardcoded fit scores.
-- Backend regression suite passes: 38 tests, including end-to-end text interview lifecycle, report schema/fairness validation, persisted report idempotency, demo isolation, coaching progress, and SQLite migration checks.
+- Backend regression suite passes: 45 tests, including end-to-end text interview lifecycle, report schema/fairness validation, persisted report idempotency, demo isolation, coaching progress, SQLite migration checks, and Clerk JWT algorithm validation.
 
 ### Partial
 
@@ -31,10 +31,10 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 | Command | Result |
 |---|---|
 | `python -m pip install -e ".[dev]"` (from `apps/api`, Python 3.12) | Exit 0 with `openai==1.109.1`; editable API and dev dependencies installed. |
-| `python -m pytest tests\\ -v` (from `apps/api`) | Exit 0; 22 passed, 20 Pydantic deprecation warnings. |
+| `python -m pytest tests\\ -v` (from `apps/api`) | Latest exit 0; 45 passed, 39 warnings. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
-| `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js production build generated all 14 application routes. |
+| `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 18 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices for modified files. |
 
 ## Transparent LLM evaluation
@@ -52,11 +52,11 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 
 | Command | Result |
 |---|---|
-| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Exit 0; 38 passed, 34 Pydantic deprecation warnings. Includes evaluator schema/fairness retries, missing-data nulls, measured-metric fixture, persisted report reload/idempotency, ownership, demo isolation, coaching progress, and SQLite migration up/down. |
+| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Latest exit 0; 45 passed, 39 warnings. Includes evaluator schema/fairness retries, missing-data nulls, measured-metric fixture, persisted report reload/idempotency, ownership, demo isolation, coaching progress, SQLite migration up/down, and Clerk JWT verification. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
-| `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
+| `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js production build generated all 14 application routes, with the same two image warnings. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 18 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices. |
 
 ### Partial and blocked
@@ -82,13 +82,13 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 |---|---|
 | `pnpm install --frozen-lockfile` (repository root) | Exit 0; all four workspace projects already up to date. |
 | `pnpm install --frozen-lockfile` (from `apps/web`) | Exit 0; nested web lockfile up to date and esbuild postinstall completed. |
-| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Exit 0; 30 passed, 34 Pydantic deprecation warnings. Includes SQLite migration up/down, voice metrics, token authorization/expiry, duplicate transcript handling, WebSocket replay/isolation, and demo interview flow. |
+| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Latest exit 0; 45 passed, 39 warnings. Includes SQLite migration up/down, voice metrics, token authorization/expiry, duplicate transcript handling, WebSocket replay/isolation, demo interview flow, and Clerk JWT verification. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
-| `pnpm --filter @voicehire/web lint` | Exit 0; two existing `<img>` optimization warnings in Settings and Sidebar. |
+| `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed (join/mute/cleanup and microphone permission denial). |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 generated all 14 application routes, with the same two image warnings. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 18 application routes. |
 
-### Revalidation on 2026-10-15
+### Earlier revalidation on 2026-10-15 (superseded by latest results below)
 
 - `pnpm install --frozen-lockfile` from the repository root and from `apps/web`: both exited 0; both lockfiles were already up to date.
 - `python -m pytest tests\\ -v` from `apps/api`: exit 0; 30 passed, 34 Pydantic deprecation warnings.
@@ -119,7 +119,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 - Dashboard, interviews, reports, coaching, progress, and settings now load through the typed API service with loading, empty, and retryable error states; mock dashboard/interview services and the unused user store were removed.
 - Clerk middleware protects application routes; sign-in, sign-up, and onboarding pages are present. Onboarding persists target role and background through the authenticated profile API, and API requests obtain a fresh Clerk token.
 - Interview setup supports resume text/upload and job description or category input, while the live room displays persisted transcript entries and labels simulated sessions.
-- Service error handling has Vitest coverage. Playwright smoke tests cover the landing page, unauthenticated redirect, setup validation, and a simulated interview; browser execution is blocked locally by missing Clerk credentials (see latest revalidation).
+- Service error handling has Vitest coverage. Playwright smoke tests cover the landing page, local demo onboarding, and a simulated interview. The local demo browser journey passed; hosted Clerk authentication remains credential-blocked.
 - SQLAlchemy models and Alembic migrations are the backend schema authority; the web app does not import Prisma Client, so the unused Prisma package and duplicate handwritten SQL schema were removed.
 - The initial Alembic migration creates the schema on fresh SQLite, downgrades cleanly, and reports no model drift with `alembic check`.
 - Backend persistence paths use SQLAlchemy models/typed statements; tests cover schema constraints, idempotency replay, and initialization on an empty database.
@@ -137,11 +137,11 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`.
 ### Broken
 
 - Backend `pnpm type-check` is not clean. The configured mypy run reports an untyped `agora_token_builder` import and a NumPy stub syntax issue under its configured Python 3.11 target. An additional run with `mypy --python-version 3.12 app/` reports 41 errors across 12 files.
-- Root `pnpm lint` is not clean: Pylint exits 28 with a 7.22/10 score. Frontend lint itself passes with two existing `<img>` optimization warnings.
+- Root `pnpm lint` is not clean: Pylint exits 28 with a 7.22/10 score. Frontend lint passes without warnings.
 
 ### Missing
 
-- A successful browser-to-API interview/evaluation smoke run has not yet been observed; Playwright scenarios exist but require Clerk credentials and authenticated browser storage state.
+- The Playwright local-demo interview journey passes. Hosted Clerk browser authentication remains unverified because Clerk credentials are unavailable locally.
 - No CI result has yet been observed on GitHub; the workflow has been added locally.
 
 ### Blocked by credentials or environment
@@ -157,8 +157,8 @@ Successful commands:
 |---|---|
 | `pnpm install --frozen-lockfile` (repository root) | Exit 0; all five workspace projects resolved and installed. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
-| `pnpm --filter @voicehire/web lint` | Exit 0; two `<img>` optimization warnings in Settings and Sidebar. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 compiled and generated all 14 application routes. |
+| `pnpm --filter @voicehire/web lint` | Latest exit 0; no warnings or errors. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 compiled and generated 18 application routes. |
 | `pnpm build` (repository root) | Exit 0; workspace build completed, including the web production build. |
 | `python -m pip install -e ".[dev]"` (from `apps/api`, clean Python 3.12 venv) | Exit 0; installed the editable API, `aiosqlite==0.19.0`, and declared dev dependencies. |
 | `python -m pytest tests/ -v` (from `apps/api`, clean Python 3.12 venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
@@ -219,9 +219,9 @@ Known failures and caveats:
 | `pnpm --filter @voicehire/web lint` | Exit 0; no errors or warnings. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
 | `pnpm --filter @voicehire/web build` | Exit 0; production build passed with dependency Edge Runtime warnings from Next/Clerk dependencies. |
-| `python -m pytest tests/ -q` (from `apps/api`) | Exit 0; 39 passed, 34 Pydantic deprecation warnings. |
+| `python -m pytest tests/ -q` (from `apps/api`) | Latest exit 0; 45 passed, 39 warnings. |
 | `alembic upgrade head` then `alembic downgrade base` (fresh SQLite DB) | Both exited 0, including the user-preferences migration. |
-| `pnpm exec playwright test --grep-invert "authenticated interview flows"` (from `apps/web`) | Exit 1 before smoke tests completed. Next.js middleware repeatedly reported `Missing Clerk Secret Key or API Key`; no Clerk credentials are configured locally. |
+| `pnpm --filter @voicehire/web exec playwright test --workers=1` | Latest exit 0; 3 passed (landing, local demo onboarding, simulated interview persistence/end/evaluation isolation). |
 | `git diff --check` | Exit 0; only Git line-ending conversion notices. |
 
 ### Blocked and remaining
@@ -256,12 +256,13 @@ Known failures and caveats:
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`) after making Agora SDK runtime import browser-only. |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 14.2.35 built all application routes. |
-| `apps\\api\\.venv\\Scripts\\python.exe -m pytest apps\\api\\tests -q` | Exit 0; 43 passed, 39 deprecation warnings. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 built 18 application routes. |
+| `apps\\api\\.venv\\Scripts\\python.exe -m pip install -e "apps\\api[dev]"` | Exit 0 after updating Requests to 2.33.0. |
+| `apps\\api\\.venv\\Scripts\\python.exe -m pytest apps\\api\\tests -q` | Latest exit 0; 45 passed, 39 warnings. |
 | `docker compose config --quiet` | Exit 0 after local-only port bindings and demo-off Compose defaults. |
 | `docker info --format '{{.ServerVersion}}'` | Docker Engine unavailable: API call to `//./pipe/dockerDesktopLinuxEngine` returned HTTP 500. |
-| `pnpm audit --prod` | Exit 1; 30 findings: 2 critical, 12 high, 13 moderate, 3 low. Both critical findings affect Next.js 14 and require Next.js `>=15.5.24` per the audit advisories; no framework-major upgrade was attempted. |
-| `python -m pip_audit --path apps\\api\\.venv\\Lib\\site-packages` | Exit 1; 60 known advisory records across 12 packages (including FastAPI/Starlette, python-multipart, python-jose, requests, and dev tools). The editable local `voicehire-api` package is skipped because it is not a PyPI distribution. |
+| `pnpm audit --prod` | Initial: 30 findings (2 critical, 12 high, 13 moderate, 3 low). After Next.js 15.5.28 migration: 4 PostCSS findings (2 high, 2 moderate). After workspace override to PostCSS 8.5.28: exit 0, no known production vulnerabilities. |
+| `pip-audit --path apps\\api\\.venv\\Lib\\site-packages --timeout 60` | Exit 1; initial: 60 records across 12 packages. Latest: 10 records in Starlette 0.49.1 only; Requests 2.33.0 no longer has a finding. Starlette advisories list fixes only in 1.x; they are deferred because FastAPI 0.121.3 requires Starlette `<0.50`. The affected StaticFiles, HTTPEndpoint, and form parsing paths are not used. The editable API package is skipped because it is not a PyPI distribution. |
 | Local credential-pattern scan (138 non-ignored working files) | No credential-shaped matches after replacing the test-only placeholder. |
 | Git-history credential-pattern scan (3,811,894 patch bytes) | Four OpenAI-shaped matches were confined to prior test-fixture placeholders in `apps/api/tests/conftest.py`; no production credential pattern was found. This scan does not rewrite history. |
 | Built browser bundle scan (39 static files) | No server-only key names, OpenAI/Clerk credential patterns, or private-key markers found. |
@@ -271,14 +272,14 @@ Known failures and caveats:
 ### Security and deployment blockers
 
 - A security review identified that Compose's initial published ports and demo-on defaults could expose an unauthenticated local stack on an untrusted network. The Compose host ports now bind to `127.0.0.1`, and `DEMO_MODE` defaults to false unless explicitly enabled in the local `.env`; Compose syntax was revalidated. Do not enable demo mode on a network-accessible deployment.
-- The dependency audits are not clean. The two critical Next.js advisories require a major framework upgrade beyond the pinned Next.js 14 line; the Python report also contains known advisories in pinned runtime and development packages. These need a compatibility-tested remediation before production deployment.
+- The production pnpm audit is clean. The Python audit still reports 10 records for Starlette 0.49.1. A Starlette 1.x upgrade is deferred pending a compatible FastAPI upgrade and broader regression validation; the backend dependency audit is not clean.
 - The historical secret-pattern matches are dummy test values, not credentials. They were replaced in the current fixture; no actual credentials were printed or detected in current source or the built web bundle.
 - The Playwright journey validates the simulated path only. It does not fabricate or display a sample score, does not generate a report from a demo session, and does not claim live Agora, OpenAI, Clerk, or PostgreSQL behavior.
 - The CI workflow and deployment configuration exist, but GitHub CI, container builds, and any production URL remain unverified.
 
 ### Prioritized remaining work
 
-1. Resolve the audited frontend and Python dependency vulnerabilities with compatibility checks and rerun both audits.
+1. Evaluate a coordinated FastAPI/Starlette 1.x upgrade and its regression risk.
 2. Restore Docker Engine; build and start the Compose stack, then verify PostgreSQL/pgvector migrations and all service health checks.
 3. Configure Clerk, OpenAI, and Agora credentials in a safe test environment; verify hosted auth, real report persistence, and a manual voice interview without exposing keys.
 4. Run the checked-in workflow on GitHub and address any CI-only issues.

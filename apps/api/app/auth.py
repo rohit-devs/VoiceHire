@@ -5,12 +5,13 @@ In demo mode (local development only), a demo user is returned without a valid t
 In production, a valid Bearer token is required on every protected endpoint
 and WebSocket connection.
 """
+
 import logging
 import time
 from typing import Optional
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, jwk, JWTError
+import jwt
 import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -59,23 +60,26 @@ async def _verify_clerk_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Clerk JWKS URL not configured")
     jwks = await _get_jwks()
 
-    unverified = jwt.get_unverified_header(token)
+    try:
+        unverified = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
     kid = unverified.get("kid")
     key_data = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
     if not key_data:
         raise HTTPException(status_code=401, detail="Invalid token: key not found")
 
-    public_key = jwk.construct(key_data)
     try:
+        public_key = jwt.PyJWK.from_dict(key_data).key
         payload = jwt.decode(
             token,
             public_key,
             algorithms=["RS256"],
             issuer=settings.CLERK_JWT_JWKS_URL.replace("/.well-known/jwks.json", ""),
-            audience=None,
+            options={"verify_aud": False},
         )
-    except JWTError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
     return {
         "id": payload.get("sub", "unknown"),
@@ -97,9 +101,7 @@ async def _upsert_user(user_info: dict, db: Optional[AsyncSession] = None) -> di
         db = async_session()
         own_session = True
     try:
-        user = await db.scalar(
-            select(User).where(User.clerk_id == user_info["clerk_id"])
-        )
+        user = await db.scalar(select(User).where(User.clerk_id == user_info["clerk_id"]))
         if user is None:
             user = User(
                 id=user_info["id"],
@@ -131,7 +133,7 @@ async def _upsert_user(user_info: dict, db: Optional[AsyncSession] = None) -> di
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     FastAPI dependency that returns the authenticated user as a dict.
@@ -169,7 +171,7 @@ async def get_current_user(
 
 async def get_current_user_id(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> str:
     """Returns just the user ID string for use in DB queries."""
     user = await get_current_user(credentials, db)
