@@ -5,3 +5,5 @@ allowBuilds:
   '@clerk/shared': true
   esbuild: true
   unrs-resolver: true
+overrides:
+  postcss: 8.5.28
