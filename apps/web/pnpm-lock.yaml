@@ -72,12 +72,6 @@ importers:
       jsdom:
         specifier: ^25.0.1
         version: 25.0.1(supports-color@7.2.0)
-      postcss:
-        specifier: ^8.5.23
-        version: 8.5.28
-      source-map-js:
-        specifier: ^1.2.2
-        version: 1.2.2
       tailwindcss:
         specifier: ^3.3.0
         version: 3.4.19
@@ -2556,10 +2550,6 @@ packages:
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
-    engines: {node: '>=0.10.0'}
-
-  source-map-js@1.2.2:
-    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
   stable-hash@0.0.5:
@@ -5511,8 +5501,6 @@ snapshots:
   siginfo@2.0.0: {}
 
   source-map-js@1.2.1: {}
-
-  source-map-js@1.2.2: {}
 
   stable-hash@0.0.5: {}
 

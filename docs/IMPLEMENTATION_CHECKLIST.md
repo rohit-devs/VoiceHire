@@ -284,3 +284,33 @@ Known failures and caveats:
 3. Configure Clerk, OpenAI, and Agora credentials in a safe test environment; verify hosted auth, real report persistence, and a manual voice interview without exposing keys.
 4. Run the checked-in workflow on GitHub and address any CI-only issues.
 5. Keep the shared demo user local-only; use separate authenticated accounts for a browser-level user-isolation E2E.
+
+## Local web development fixes (2026-10-17)
+
+### Implemented and verified
+
+- `/sign-in` and `/sign-up` use the shared auth-mode helper and render Clerk components only when Clerk auth is configured. Middleware now also reads the explicit server runtime flags so local demo navigation is not redirected back to sign-in.
+- The API-unreachable demo banner is development-only, aborts its request on timeout/unmount, and uses a small explanatory pill. Production only displays it when the API explicitly reports demo mode.
+- The root layout suppresses the expected HTML hydration warning. Native development defaults and documentation use API port `8000`; API CORS allows both `http://localhost:3000` and `http://127.0.0.1:3000`.
+- The landing page now has a centered hero, product preview, three-step explanation, feature cards, footer, and explicit simulated-versus-real limitations.
+- `next@15.5.28` is already the latest 15.5.x patch; no package upgrade was needed.
+- The final browser suite verifies landing, no-Clerk sign-in without runtime errors, local-demo onboarding persistence, and a simulated interview through answer, reload, end, and report/coaching isolation.
+
+### Final command results
+
+| Command / check | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` | Exit 0; all four workspace projects already up to date. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next prints that `next lint` is deprecated. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
+| `pnpm --filter @voicehire/web build` | Exit 0 on Next.js 15.5.28; 18 application routes generated. |
+| `python -m pytest tests/ -v` (from `apps/api`) | Exit 0; 45 passed, 39 deprecation warnings, 293.01s. |
+| `pnpm --filter @voicehire/web exec playwright test --workers=1` | Final run exit 0; 4 passed in 1.6m. An earlier run timed out waiting for the Playwright web server; the rerun completed successfully. |
+| `pnpm dev` with a fresh SQLite URL; API ready/live and web `/` | Previously verified in this task; each endpoint returned HTTP 200. The existing unstamped legacy SQLite database remains untouched. |
+| `git diff --check` | Exit 0; Git reports only Windows line-ending conversion notices. |
+
+### Still unverified
+
+- Clerk-hosted authentication still requires test keys; live Agora voice and OpenAI output require their respective credentials.
+- Docker/PostgreSQL, GitHub Actions execution, and deployment remain unverified as described in the whole-system baseline above.

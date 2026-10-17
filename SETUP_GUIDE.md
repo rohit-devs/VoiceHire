@@ -1,6 +1,6 @@
 # Local setup
 
-VoiceHire contains a Next.js 14 frontend in `apps/web` and a FastAPI backend in `apps/api`. SQLAlchemy models and Alembic migrations own the API schema. The frontend does not use Prisma. Redis is included in the local Compose stack for infrastructure testing, but the API currently does not use it.
+VoiceHire contains a Next.js 15.5 frontend in `apps/web` and a FastAPI backend in `apps/api`. SQLAlchemy models and Alembic migrations own the API schema. The frontend does not use Prisma. Redis is included in the local Compose stack for infrastructure testing, but the API currently does not use it.
 
 ## Requirements
 
@@ -23,10 +23,10 @@ Copy-Item .env.example .env
 Edit `.env` for local SQLite by changing `DATABASE_URL` to:
 
 ```text
-sqlite+aiosqlite:///./voicehire_demo.db
+sqlite+aiosqlite:///./voicehire_local.db
 ```
 
-Keep `APP_ENV=development` and `DEMO_MODE=true` only for local simulated usage. The local demo user is shared and has no Clerk authentication; never use it with real candidate data. Clerk, OpenAI, and Agora values may remain empty for text/demo use.
+Use a fresh local database file for Alembic setup. Existing legacy SQLite files without an Alembic version stamp are not auto-adopted; keep them as-is and use a new filename rather than deleting or reusing them. Keep `APP_ENV=development` and `DEMO_MODE=true` only for local simulated usage. The local demo user is shared and has no Clerk authentication; never use it with real candidate data. Clerk, OpenAI, and Agora values may remain empty for text/demo use.
 
 Create `apps\web\.env.local` with only public web settings and the explicit development/demo flags:
 
@@ -34,7 +34,8 @@ Create `apps\web\.env.local` with only public web settings and the explicit deve
 @'
 APP_ENV=development
 DEMO_MODE=true
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_DEMO_MODE=true
 '@ | Set-Content apps\web\.env.local
 ```
 
@@ -50,7 +51,14 @@ python -m pip install -e "apps\api[dev]"
 pnpm --filter @voicehire/api db:migrate
 ```
 
-Start the API and web app in separate PowerShell terminals from the repository root:
+Start both apps together from the repository root:
+
+```powershell
+.\apps\api\.venv\Scripts\Activate.ps1
+pnpm dev
+```
+
+Or start them separately in two terminals:
 
 ```powershell
 .\apps\api\.venv\Scripts\Activate.ps1
@@ -61,11 +69,11 @@ pnpm --filter @voicehire/api dev
 pnpm --filter @voicehire/web dev
 ```
 
-Open <http://localhost:3000>. The API is on <http://localhost:8000>. Verify readiness and liveness:
+Open <http://localhost:3000>. The API is on <http://127.0.0.1:8000>. Verify readiness and liveness:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/api/health/ready
-Invoke-RestMethod http://localhost:8000/api/health/live
+Invoke-RestMethod http://127.0.0.1:8000/api/health/ready
+Invoke-RestMethod http://127.0.0.1:8000/api/health/live
 ```
 
 ## Linux/macOS: native development
@@ -79,7 +87,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-Edit `.env` and set `DATABASE_URL=sqlite+aiosqlite:///./voicehire_demo.db` for SQLite, then create the virtual environment and migrate:
+Edit `.env` and set `DATABASE_URL=sqlite+aiosqlite:///./voicehire_local.db` for SQLite, then create the virtual environment and migrate:
 
 ```sh
 python3.12 -m venv apps/api/.venv
@@ -95,7 +103,7 @@ Create `apps/web/.env.local` with the development flags and public API URL:
 printf '%s\n' \
   'APP_ENV=development' \
   'DEMO_MODE=true' \
-  'NEXT_PUBLIC_API_URL=http://localhost:8000' \
+  'NEXT_PUBLIC_API_URL=http://127.0.0.1:8000' \
   > apps/web/.env.local
 ```
 

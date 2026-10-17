@@ -43,6 +43,7 @@ env/
 
 # Next.js
 .next/
+/apps/web/.next-playwright/
 out/
 .vercel/
 

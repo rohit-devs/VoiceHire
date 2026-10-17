@@ -2,16 +2,21 @@
 
 import { useEffect, useState } from "react";
 
-type AppMode = "demo" | "live" | "unknown";
+type AppMode = "demo" | "live";
+type BannerState = AppMode | "loading" | "unavailable";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export default function DemoModeBanner() {
-  const [mode, setMode] = useState<AppMode>("unknown");
+  const [state, setState] = useState<BannerState>("loading");
 
   useEffect(() => {
     let active = true;
-    fetch(`${API_URL}/`, { cache: "no-store" })
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+    fetch(`${API_URL}/`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`Could not determine API mode: HTTP ${response.status}`);
@@ -25,35 +30,40 @@ export default function DemoModeBanner() {
         ) {
           throw new Error("API returned an invalid mode response");
         }
-        if (active) setMode(body.mode);
+        if (active) setState(body.mode);
       })
-      .catch((error: unknown) => {
-        console.error("Could not determine VoiceHire runtime mode:", error);
-        if (active) setMode("unknown");
+      .catch(() => {
+        if (active) setState("unavailable");
       });
 
     return () => {
       active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 
-  if (mode === "live") return null;
+  if (state === "loading" || state === "live") return null;
+  if (state === "unavailable" && process.env.NODE_ENV === "production") {
+    return null;
+  }
 
-  const message =
-    mode === "demo"
-      ? "DEMO FEATURES ENABLED — simulated sessions are opt-in and labeled separately."
-      : "MODE UNKNOWN — unable to verify whether this session uses demo or live data.";
-
+  const isDemo = state === "demo";
+  const message = isDemo
+    ? "Demo mode — simulated sessions are opt-in and labeled separately"
+    : `API unreachable at ${API_URL} — start the backend`;
   return (
-    <div
-      role="status"
-      className={`px-4 py-2 text-center text-xs font-semibold tracking-wide ${
-        mode === "demo"
-          ? "bg-amber-300 text-amber-950"
-          : "bg-rose-700 text-white"
-      }`}
-    >
-      {message}
+    <div className="pointer-events-none fixed left-0 right-0 top-3 z-50 flex justify-center px-3">
+      <div
+        role="status"
+        className={`max-w-full rounded-full border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+          isDemo
+            ? "border-amber-300/30 bg-amber-950/90 text-amber-100"
+            : "border-slate-600 bg-slate-900/95 text-slate-200"
+        }`}
+      >
+        {message}
+      </div>
     </div>
   );
 }

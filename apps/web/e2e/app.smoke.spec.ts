@@ -13,6 +13,7 @@ async function enterLocalDemo(page: Page) {
   );
   await page.getByRole("button", { name: "Save profile" }).click();
   expect((await profileUpdate).status()).toBe(200);
+  await expect(page).toHaveURL(/dashboard/, { timeout: 60_000 });
   await page.goto("/settings");
   await expect(page.getByLabel("Target role")).toHaveValue("Backend Engineer");
 }
@@ -20,16 +21,37 @@ async function enterLocalDemo(page: Page) {
 test("landing page explains the product and links to account creation", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /prepare to perform/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /create an account/i })).toHaveAttribute("href", "/sign-up");
+  await expect(
+    page.getByRole("link", { name: "Create an account" }).first(),
+  ).toHaveAttribute("href", "/sign-up");
+});
+
+test("sign-in without Clerk environment variables has no runtime errors", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto("/sign-in");
+
+  await expect(
+    page.getByRole("heading", { name: "Sign in to VoiceHire" }),
+  ).toBeVisible();
+  expect(runtimeErrors).toEqual([]);
 });
 
 test("local demo sign-in saves onboarding details", async ({ page }) => {
+  test.setTimeout(120_000);
   await enterLocalDemo(page);
   await page.goto("/settings");
   await expect(page.getByLabel("Target role")).toHaveValue("Backend Engineer");
 });
 
 test("creates, completes, and reloads a clearly labeled simulated interview", async ({ page }) => {
+  test.setTimeout(120_000);
   await enterLocalDemo(page);
   await page.goto("/interview/new");
 
@@ -53,13 +75,15 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
   const startSessionResponse = page.waitForResponse(
     (response) =>
       response.url().includes("/api/interviews/sessions/") &&
-      response.url().endsWith("/start"),
+      response.url().endsWith("/start") &&
+      response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Start Interview" }).click();
   expect((await createSessionResponse).ok()).toBeTruthy();
   expect((await startSessionResponse).ok()).toBeTruthy();
-  await expect(page).toHaveURL(/\/interview\/prepare\//);
+  await expect(page).toHaveURL(/\/interview\/prepare\//, { timeout: 60_000 });
   await page.getByRole("button", { name: "Enter Interview" }).click();
+  await expect(page).toHaveURL(/\/interview\/live\//, { timeout: 60_000 });
   await expect(page.getByText("Simulated demo", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Voice mode: On" }).click();
@@ -68,7 +92,9 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
     "I reduced database latency by adding a PostgreSQL index and measured the improvement in production.",
   );
   const nextQuestionResponse = page.waitForResponse(
-    (response) => response.url().includes("/generate-question"),
+    (response) =>
+      response.url().includes("/generate-question") &&
+      response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Submit Answer" }).click();
   await expect(page.getByText(/I reduced database latency/)).toBeVisible();
@@ -90,8 +116,17 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
   await page.reload();
   await expect(page.getByText("Simulated demo", { exact: true })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
+  const endSessionResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/interviews/sessions/${sessionId}/end`) &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "End Interview" }).click();
-  await expect(page).toHaveURL(new RegExp(`/interview/complete/${sessionId}$`));
+  expect((await endSessionResponse).ok()).toBeTruthy();
+  await expect(page).toHaveURL(
+    new RegExp(`/interview/complete/${sessionId}$`),
+    { timeout: 60_000 },
+  );
   await expect(page.getByText(/real evaluations are not generated from simulated sessions/i)).toBeVisible();
 
   await page.goto(`/reports/${sessionId}`);

@@ -56,7 +56,7 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 
 export function useInterviewWebSocket({
   sessionId,
-  apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
   autoConnect = true,
   authToken = null,
 }: UseInterviewWebSocketOptions): UseInterviewWebSocketReturn {

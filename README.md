@@ -21,7 +21,7 @@ For a complete Docker stack, copy `.env.example` to `.env` and run:
 docker compose up --build
 ```
 
-Open the web app at <http://localhost:3000>. The API is at <http://localhost:8000>; readiness and liveness are available at `/api/health/ready` and `/api/health/live`. Compose runs Alembic migrations before starting the API, and binds published ports to loopback only. The example `.env` opts into the shared local demo user; without that explicit config demo mode defaults off. Never use the shared demo user with real candidate data.
+Open the web app at <http://localhost:3000>. The API is at <http://127.0.0.1:8000>; readiness and liveness are available at `/api/health/ready` and `/api/health/live`. Native `pnpm dev` and Compose use API port 8000; the default `NEXT_PUBLIC_API_URL` points to that address. Compose runs Alembic migrations before starting the API, and binds published ports to loopback only. The example `.env` opts into the shared local demo user; without that explicit config demo mode defaults off. Never use the shared demo user with real candidate data.
 
 For native development, installation, environment setup, migrations, and Windows-specific commands, see [SETUP_GUIDE.md](./SETUP_GUIDE.md).
 

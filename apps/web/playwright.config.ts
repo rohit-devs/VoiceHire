@@ -42,6 +42,8 @@ export default defineConfig({
       env: {
         APP_ENV: "development",
         DEMO_MODE: "true",
+        NEXT_PUBLIC_DEMO_MODE: "true",
+        NEXT_DIST_DIR: ".next-playwright",
         CLERK_SECRET_KEY: "",
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "",
         NEXT_PUBLIC_API_URL: apiUrl,

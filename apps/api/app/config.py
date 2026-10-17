@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = False
 
     # ── Database ──
-    DATABASE_URL: str = "sqlite+aiosqlite:///./voicehire_demo.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./voicehire_local.db"
 
     # ── AI ──
     OPENAI_API_KEY: str = ""
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     CLERK_JWT_JWKS_URL: str = ""
 
     # ── CORS / Hosts ──
-    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     ALLOWED_HOSTS: str = "localhost,127.0.0.1,*.vercel.app"
 
     @property

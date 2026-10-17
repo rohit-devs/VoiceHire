@@ -9,7 +9,7 @@
 
 ## API is unhealthy or migrations fail
 
-- Request `http://localhost:8000/api/health/ready`. Database connection failure returns HTTP 503 without exposing the connection string.
+- Request `http://127.0.0.1:8000/api/health/ready`. Database connection failure returns HTTP 503 without exposing the connection string.
 - Confirm `DATABASE_URL` points to a reachable SQLite or PostgreSQL database. For Compose, use hostname `postgres`, not `localhost`.
 - Ensure the PostgreSQL server has pgvector installed; the migration enables the `vector` extension.
 - Run `alembic upgrade head` from `apps/api` (or `pnpm --filter @voicehire/api db:migrate` at the repository root). Back up existing data before schema upgrades.
