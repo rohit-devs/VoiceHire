@@ -56,7 +56,7 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 
 export function useInterviewWebSocket({
   sessionId,
-  apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  apiUrl,
   autoConnect = true,
   authToken = null,
 }: UseInterviewWebSocketOptions): UseInterviewWebSocketReturn {
@@ -79,11 +79,13 @@ export function useInterviewWebSocket({
     setIsConnecting(true);
     setError(null);
 
-    const protocol = apiUrl.startsWith("https") ? "wss:" : "ws:";
+    const pageUrl = new URL(window.location.href);
+    const targetUrl = apiUrl ? new URL(apiUrl, pageUrl) : pageUrl;
     const url = new URL(
       `/api/interviews/sessions/${encodeURIComponent(sessionId)}/ws`,
-      `${protocol}//${apiUrl.replace(/^https?:\/\//, "")}`,
+      targetUrl.origin,
     );
+    url.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("after_sequence", String(lastSequenceRef.current));
     if (authToken) url.searchParams.set("token", authToken);
 

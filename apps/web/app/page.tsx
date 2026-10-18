@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ButtonLink, Card } from "@/components/ui/primitives";
 import {
   Activity,
   ArrowRight,
@@ -7,7 +8,6 @@ import {
   Check,
   MessageSquare,
   Mic,
-  Play,
   Sparkles,
 } from "lucide-react";
 
@@ -111,29 +111,22 @@ export default function HomePage() {
             Review saved transcripts, measured speaking metrics, and clearly
             labeled AI feedback.
           </p>
-          <div className="mt-9 flex flex-wrap justify-center gap-4">
-            <Link
-              href="/sign-up"
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-violet-500/25 transition hover:brightness-110"
+          <div className="mt-9 flex justify-center">
+            <ButtonLink
+              href="/sign-in"
+              className="min-h-12 rounded-xl px-7 text-base shadow-lg shadow-violet-500/25"
             >
               <Sparkles aria-hidden="true" className="h-5 w-5" />
-              Create an account
+              Try demo interview
               <ArrowRight aria-hidden="true" className="h-5 w-5" />
-            </Link>
-            <Link
-              href="/sign-in"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-7 py-3.5 text-base font-medium text-slate-200 transition hover:bg-white/10 hover:text-white"
-            >
-              <Play aria-hidden="true" className="h-5 w-5" />
-              Sign in
-            </Link>
+            </ButtonLink>
           </div>
           <p className="mt-5 max-w-xl text-sm text-slate-400">
-            Demo sessions are simulated and labeled. Real voice and AI
-            evaluation features require their providers to be configured.
+            No paid credentials needed. Simulated sessions are labeled and
+            separate from real evaluations; never enter real candidate data.
           </p>
 
-          <div className="mt-16 w-full max-w-5xl rounded-3xl border border-white/10 bg-slate-950/80 p-3 text-left shadow-2xl shadow-violet-950/40 sm:p-5">
+          <Card className="mt-16 w-full max-w-5xl rounded-3xl border-white/10 bg-slate-950/80 p-3 text-left shadow-2xl shadow-violet-950/40 sm:p-5">
             <div className="rounded-2xl border border-white/10 bg-[#10111b] p-5 sm:p-8">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
                 <div>
@@ -143,7 +136,7 @@ export default function HomePage() {
                   <p className="mt-1 text-sm text-slate-400">
                     An illustrative preview — no candidate data or scores
                   </p>
-                </div>
+                </Card>
                 <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-medium text-emerald-200">
                   Ready to practice
                 </span>

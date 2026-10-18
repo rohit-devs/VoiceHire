@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
 import { useInterviewStore } from "@/stores/interviewStore";
 import { ArrowRight, FileText, Target, Sparkles, Loader2, Activity, BarChart3 } from "lucide-react";
+import { Button, Card } from "@/components/ui/primitives";
 
 export default function PrepareInterviewPage() {
   const router = useRouter();
@@ -13,8 +14,10 @@ export default function PrepareInterviewPage() {
   const interviewId = params.id as string;
   const { currentInterview, setInterviewPhase } = useInterviewStore();
   const [loading, setLoading] = useState(true);
+  const [secureContext, setSecureContext] = useState<boolean | null>(null);
 
   useEffect(() => {
+    setSecureContext(window.isSecureContext);
     if (!currentInterview || currentInterview.id !== interviewId) {
       interviewService.getInterview(interviewId).then((interview) => {
         if (interview) {
@@ -72,9 +75,14 @@ export default function PrepareInterviewPage() {
             <p className="text-muted-foreground">
               {interview.interviewType.replace("_", " ")} • {interview.difficulty} • {interview.duration} min
             </p>
+            {secureContext === false && (
+              <p role="status" className="mx-auto mt-5 max-w-xl rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-left text-sm leading-relaxed text-amber-100">
+                Microphone needs HTTPS or localhost. You can continue with typed answers; text input remains available throughout the interview.
+              </p>
+            )}
           </div>
 
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-8 mb-8">
+          <Card className="mb-8 p-6 sm:p-8">
             <h2 className="text-lg font-semibold text-white mb-6">Interview Details</h2>
             <div className="space-y-4">
               <DetailRow label="Role" value={interview.role} />
@@ -85,9 +93,9 @@ export default function PrepareInterviewPage() {
               <DetailRow label="Duration" value={`${interview.duration} minutes`} />
               {interview.isDemo && <DetailRow label="Session type" value="Simulated demo" />}
             </div>
-          </div>
+          </Card>
 
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-8 mb-8">
+          <Card className="mb-8 p-6 sm:p-8">
             <h2 className="text-lg font-semibold text-white mb-6">How VoiceHire Works</h2>
             <div className="space-y-4">
               {steps.map((step, i) => (
@@ -101,18 +109,18 @@ export default function PrepareInterviewPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
 
-          <button
+          <Button
             onClick={() => {
               setInterviewPhase("live");
               router.push(`/interview/live/${interviewId}`);
             }}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all"
+            className="w-full rounded-xl py-3.5 text-base shadow-lg shadow-violet-500/25"
           >
             Enter Interview
             <ArrowRight className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
       </div>
     </AppShell>

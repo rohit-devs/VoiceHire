@@ -1,0 +1,30 @@
+- generic [ref=f5e1]:
+  - generic:
+    - status: Demo mode — simulated sessions are opt-in and labeled separately
+  - generic [ref=f5e2]:
+    - banner [ref=f5e5]:
+      - generic [ref=f5e6]:
+        - generic [ref=f5e8]: Live Interview
+        - generic [ref=f5e9]: Simulated demo
+        - generic [ref=f5e10]: technical
+      - generic [ref=f5e11]:
+        - 'button "Voice mode: Off" [active] [ref=f5e57] [cursor=pointer]'
+        - generic [ref=f5e13]: 00:00
+        - button "End Interview" [ref=f5e14] [cursor=pointer]
+    - generic [ref=f5e19]:
+      - generic [ref=f5e22]:
+        - generic [ref=f5e24]:
+          - img "idle" [ref=f5e26]
+          - generic [ref=f5e31]:
+            - generic [ref=f5e32]: AI Interviewer
+            - paragraph [ref=f5e34]: Waiting for the AI interviewer...
+        - button "Start Interview" [ref=f5e37] [cursor=pointer]
+      - generic [ref=f5e40]:
+        - generic [ref=f5e41]:
+          - heading "Live Transcript" [level=3] [ref=f5e42]
+          - generic [ref=f5e43] [cursor=pointer]:
+            - checkbox "Auto-scroll" [checked] [ref=f5e44]
+            - generic [ref=f5e45]: Auto-scroll
+        - log "Interview transcript" [ref=f5e46]
+  - button "Open Next.js Dev Tools" [ref=f5e52] [cursor=pointer]
+  - alert [ref=f5e56]

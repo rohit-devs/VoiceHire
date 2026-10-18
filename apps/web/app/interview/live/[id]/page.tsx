@@ -9,6 +9,7 @@ import { useAgoraVoice, type AgoraVoiceState } from "@/hooks/useAgoraVoice";
 import { getAuthToken } from "@/lib/services/apiInterviewService";
 import { VoiceOrb } from "@/components/interview/VoiceOrb";
 import { Loader2, ArrowRight, PhoneOff, Mic, MicOff } from "lucide-react";
+import { Button, Card, Textarea } from "@/components/ui/primitives";
 import {
   BrowserSpeechRecognitionProvider,
   BrowserSpeechSynthesisProvider,
@@ -46,6 +47,7 @@ export default function LiveInterviewPage() {
   const [elapsed, setElapsed] = useState(0);
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
   const [useRealVoice, setUseRealVoice] = useState(true);
+  const [secureContext, setSecureContext] = useState(true);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [speechRestartSignal, setSpeechRestartSignal] = useState(0);
@@ -85,6 +87,12 @@ export default function LiveInterviewPage() {
 
   // Use the current Clerk token when configured; local demo mode intentionally has none.
   useEffect(() => {
+    const secure = window.isSecureContext;
+    setSecureContext(secure);
+    if (!secure) {
+      setUseRealVoice(false);
+      setSpeechError("Microphone needs HTTPS or localhost");
+    }
     let active = true;
     void getAuthToken().then((token) => {
       if (active) setAuthTokenState(token);
@@ -417,7 +425,8 @@ export default function LiveInterviewPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => void toggleVoiceMode()}
-            disabled={agoraState === "connecting" || agoraState === "requesting-permission"}
+            disabled={!secureContext || agoraState === "connecting" || agoraState === "requesting-permission"}
+            aria-label={secureContext ? undefined : "Voice unavailable: microphone needs HTTPS or localhost"}
             className={`text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
               useRealVoice
                 ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
@@ -427,13 +436,14 @@ export default function LiveInterviewPage() {
             {useRealVoice ? "Voice mode: On" : "Voice mode: Off"}
           </button>
           <span className="text-[13px] font-mono text-muted-foreground">{formatTime(elapsed)}</span>
-          <button
+          <Button
             onClick={handleEndInterview}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-colors"
+            variant="danger"
+            className="min-h-8 gap-1.5 px-3 py-1.5 text-xs"
           >
             <PhoneOff className="h-3.5 w-3.5" />
             End Interview
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -513,7 +523,7 @@ export default function LiveInterviewPage() {
           <div className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden">
             <div className="w-full max-w-2xl space-y-6">
               {/* AI Card */}
-              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
+              <Card className="p-5 sm:p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex-shrink-0">
                     <VoiceOrb
@@ -522,19 +532,32 @@ export default function LiveInterviewPage() {
                       audioLevel={agoraState === "connected" ? audioLevel : 0}
                       connected={agoraState === "connected"}
                     />
-                  </div>
+                  </Card>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-semibold text-white">AI Interviewer</span>
-                      {orbState === "speaking" && (
-                        <span className="text-[10px] text-violet-300 bg-violet-500/10 px-1.5 py-0.5 rounded">Speaking</span>
-                      )}
-                      {orbState === "thinking" && (
-                        <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded">Thinking</span>
-                      )}
-                      {orbState === "listening" && (
-                        <span className="text-[10px] text-blue-300 bg-blue-500/10 px-1.5 py-0.5 rounded">Listening</span>
-                      )}
+                      <span
+                        aria-live="polite"
+                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                          orbState === "speaking"
+                            ? "bg-violet-500/15 text-violet-200"
+                            : orbState === "listening"
+                              ? "bg-blue-500/15 text-blue-200"
+                              : orbState === "thinking"
+                                ? "bg-amber-500/15 text-amber-100"
+                                : "bg-white/10 text-slate-200"
+                        }`}
+                      >
+                        {orbState === "speaking"
+                          ? "AI speaking"
+                          : orbState === "listening"
+                            ? "Listening"
+                            : orbState === "thinking"
+                              ? "Thinking"
+                              : isInterviewStarted
+                                ? "Ready for your answer"
+                                : "Idle"}
+                      </span>
                     </div>
                     <p className="text-[15px] text-white leading-relaxed">
                       {currentQuestion?.q}
@@ -546,17 +569,22 @@ export default function LiveInterviewPage() {
                           : `Voice unavailable (${agoraState.replace(/-/g, " ")}). Use text input or the labeled simulated demo.`}
                       </p>
                     )}
+                    {!secureContext && (
+                      <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm leading-relaxed text-amber-100">
+                        Microphone needs HTTPS or localhost. Continue by typing your answer below.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* User Response Card */}
               {transcripts.filter(t => t.speaker === "candidate").length > 0 && (
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-5">
+                <Card className="border-emerald-500/20 bg-emerald-500/[0.03] p-5">
                   <div className="flex items-start gap-4">
                     <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
                       <span className="text-xs font-bold text-white">You</span>
-                    </div>
+                    </Card>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-semibold text-emerald-300">You</span>
@@ -580,10 +608,10 @@ export default function LiveInterviewPage() {
               {/* Controls */}
               <div className="flex items-center justify-center gap-3">
                 {!isInterviewStarted ? (
-                  <button
+                  <Button
                     onClick={startInterview}
                     disabled={agoraState === "connecting" || agoraState === "requesting-permission"}
-                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all disabled:opacity-50"
+                    className="rounded-xl px-6 py-2.5 shadow-lg shadow-violet-500/25"
                   >
                     {agoraState === "connecting" || agoraState === "requesting-permission" ? (
                       <>
@@ -596,24 +624,24 @@ export default function LiveInterviewPage() {
                         <ArrowRight className="h-4 w-4" />
                       </>
                     )}
-                  </button>
+                  </Button>
                 ) : (
                   <>
-                    <textarea
+                    <Textarea
                       value={answerText}
                       onChange={(event) => setAnswerText(event.target.value)}
                       placeholder="Type your answer"
                       rows={2}
-                      className="w-full max-w-md rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                    >
-                    </textarea>
-                    <button
+                      aria-label="Type your answer"
+                      className="max-w-md bg-white/5"
+                    />
+                    <Button
                       onClick={() => void submitAnswer()}
                       disabled={!answerText.trim() || orbState === "thinking"}
-                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="bg-emerald-700 text-white hover:bg-emerald-600"
                     >
                       Submit Answer
-                    </button>
+                    </Button>
                     {agoraState === "connected" && (
                       <button
                         onClick={() => void (isMuted ? unmuteAgora() : muteAgora())}
@@ -649,17 +677,16 @@ export default function LiveInterviewPage() {
 
           {/* Bottom Metrics */}
           {isInterviewStarted && (
-            <div className="h-16 border-t border-white/[0.08] bg-[#0a0a0f] flex items-center px-6 gap-6 flex-shrink-0">
-              <MetricItem label="Speaking" metric={getMetric(metrics, "speaking_duration_seconds")} />
-              <MetricItem label="Pace" metric={getMetric(metrics, "words_per_minute")} />
-              <MetricItem label="Filler rate" metric={getMetric(metrics, "filler_word_rate")} />
-              <MetricItem label="Avg. answer" metric={getMetric(metrics, "answer_length_words")} />
-              <MetricItem label="Remaining" metric={getMetric(metrics, "time_remaining_seconds")} />
-              <div className="flex-1" />
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">Interview Progress</span>
-                <span className="text-xs font-semibold text-white">{interviewerQuestions.length} asked</span>
-              </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-white/[0.08] bg-[#0a0a0f] p-4 sm:grid-cols-3 lg:grid-cols-6">
+          <MetricItem label="Speaking time" metric={getMetric(metrics, "speaking_duration_seconds")} />
+          <MetricItem label="Words per minute" metric={getMetric(metrics, "words_per_minute")} />
+          <MetricItem label="Filler rate" metric={getMetric(metrics, "filler_word_rate")} />
+          <MetricItem label="Average answer" metric={getMetric(metrics, "answer_length_words")} />
+          <MetricItem label="Time remaining" metric={getMetric(metrics, "time_remaining_seconds")} />
+          <div className="flex min-w-0 flex-col justify-center rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <span className="text-xs font-medium text-slate-300">Interview progress</span>
+            <span className="mt-1 text-sm font-semibold text-white">{interviewerQuestions.length} questions asked</span>
+          </div>
             </div>
           )}
         </div>

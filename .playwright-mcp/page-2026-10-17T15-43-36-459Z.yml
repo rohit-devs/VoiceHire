@@ -1,0 +1,79 @@
+- main [ref=e2]:
+  - generic [ref=e5]:
+    - link "VoiceHire" [ref=e6] [cursor=pointer]:
+      - /url: /
+    - paragraph [ref=e12]: Interview practice, grounded in your experience
+    - heading "Don't just prepare answers. Prepare to perform." [level=1] [ref=e13]:
+      - text: Don't just prepare answers.
+      - generic [ref=e14]: Prepare to perform.
+    - paragraph [ref=e15]: Practice role-specific interviews with your resume and job context. Review saved transcripts, measured speaking metrics, and clearly labeled AI feedback.
+    - generic [ref=e16]:
+      - link "Create an account" [ref=e17] [cursor=pointer]:
+        - /url: /sign-up
+      - link "Sign in" [ref=e23] [cursor=pointer]:
+        - /url: /sign-in
+    - paragraph [ref=e26]: Demo sessions are simulated and labeled. Real voice and AI evaluation features require their providers to be configured.
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - paragraph [ref=e31]: Interview workspace
+          - paragraph [ref=e32]: An illustrative preview — no candidate data or scores
+        - generic [ref=e33]: Ready to practice
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - paragraph [ref=e36]: Interview question
+          - paragraph [ref=e37]: Questions are tailored from your provided resume and role context.
+          - paragraph [ref=e55]: Voice availability depends on browser support and configuration. Text input remains available.
+        - generic [ref=e56]:
+          - generic [ref=e57]: Saved transcript
+          - generic [ref=e61]: Measured metrics when data is sufficient
+          - generic [ref=e65]: AI guidance with answer evidence
+          - paragraph [ref=e69]: AI assessments are guidance, not proof of competence.
+  - region [ref=e70]:
+    - generic [ref=e71]:
+      - paragraph [ref=e72]: Practice with purpose
+      - heading "A clearer way to prepare" [level=2] [ref=e73]
+    - generic [ref=e74]:
+      - article [ref=e75]:
+        - heading "Practice by voice or text" [level=3] [ref=e80]
+        - paragraph [ref=e81]: Use supported voice features when available, or complete the same interview with typed answers.
+      - article [ref=e82]:
+        - heading "Questions with context" [level=3] [ref=e86]
+        - paragraph [ref=e87]: Interview questions use the resume and role information you provide. Follow-ups can reference your answers.
+      - article [ref=e88]:
+        - heading "Evidence-backed review" [level=3] [ref=e92]
+        - paragraph [ref=e93]: Completed real sessions can include AI rubric judgments with answer quotes. They are guidance, not proof of competence.
+      - article [ref=e94]:
+        - heading "Measured transcript metrics" [level=3] [ref=e98]
+        - paragraph [ref=e99]: See speaking metrics only when finalized transcript segments contain enough timestamped data to calculate them.
+      - article [ref=e100]:
+        - heading "Practice suggestions" [level=3] [ref=e105]
+        - paragraph [ref=e106]: Review saved exercises based on the areas identified in a completed evaluation.
+      - article [ref=e107]:
+        - heading "Clear demo labeling" [level=3] [ref=e111]
+        - paragraph [ref=e112]: Simulated sessions are explicitly labeled and kept separate from real evaluations.
+  - region [ref=e113]:
+    - generic [ref=e114]:
+      - generic [ref=e115]:
+        - paragraph [ref=e116]: How it works
+        - heading "Three steps to a focused practice" [level=2] [ref=e117]
+      - list [ref=e118]:
+        - listitem [ref=e119]:
+          - text: "01"
+          - heading "Add your context" [level=3] [ref=e120]
+          - paragraph [ref=e121]: Provide resume text and a job description or role category to tailor the session.
+        - listitem [ref=e122]:
+          - text: "02"
+          - heading "Practice your interview" [level=3] [ref=e123]
+          - paragraph [ref=e124]: Respond by text or use voice features when they are configured and supported.
+        - listitem [ref=e125]:
+          - text: "03"
+          - heading "Review what was captured" [level=3] [ref=e126]
+          - paragraph [ref=e127]: Return to your transcript, measured metrics, and clearly labeled AI guidance.
+  - generic [ref=e128]:
+    - paragraph [ref=e129]: VoiceHire — deliberate practice, honest feedback.
+    - navigation "Footer" [ref=e130]:
+      - link "Sign in" [ref=e131] [cursor=pointer]:
+        - /url: /sign-in
+      - link "Create an account" [ref=e132] [cursor=pointer]:
+        - /url: /sign-up

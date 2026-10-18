@@ -1,0 +1,39 @@
+- generic [ref=f6e2]:
+  - complementary [ref=f6e3]:
+    - generic [ref=f6e4]:
+      - generic [ref=f6e5]:
+        - link "VoiceHire AI Interviewer & Communication Coach" [ref=f6e6] [cursor=pointer]:
+          - /url: /dashboard
+          - generic [ref=f6e13]:
+            - generic [ref=f6e14]: VoiceHire
+            - generic [ref=f6e15]: AI Interviewer & Communication Coach
+        - button "Collapse sidebar" [ref=f6e16] [cursor=pointer]
+      - navigation [ref=f6e19]:
+        - link "Dashboard" [ref=f6e20] [cursor=pointer]:
+          - /url: /dashboard
+        - link "New Interview" [ref=f6e27] [cursor=pointer]:
+          - /url: /interview/new
+        - link "Interviews" [ref=f6e32] [cursor=pointer]:
+          - /url: /interviews
+        - link "Reports" [ref=f6e38] [cursor=pointer]:
+          - /url: /reports
+        - link "AI Coach" [ref=f6e42] [cursor=pointer]:
+          - /url: /coach
+        - link "Progress" [ref=f6e47] [cursor=pointer]:
+          - /url: /progress
+        - link "Settings" [ref=f6e52] [cursor=pointer]:
+          - /url: /settings
+      - generic [ref=f6e58]:
+        - generic [aria-hidden] [ref=f6e60]: "?"
+        - generic [ref=f6e63]:
+          - paragraph [ref=f6e64]: Profile unavailable
+          - paragraph [ref=f6e65]: Account data unavailable
+  - main [ref=f6e66]:
+    - main [ref=f6e67]:
+      - generic [ref=f6e68]:
+        - generic [ref=f6e69]:
+          - heading "Interview evaluation" [level=1] [ref=f6e70]
+          - paragraph [ref=f6e71]: AI scores are guidance for practice, not proof of competence.
+        - status [ref=f6e72]: Loading persisted report…
+        - link "Return to interview summary" [ref=f6e73] [cursor=pointer]:
+          - /url: /interview/complete/82977526-4090-4805-86f5-3170c65a8606

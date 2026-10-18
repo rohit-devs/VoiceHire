@@ -74,6 +74,7 @@ coverage/
 .pytest_cache/
 .coverage
 *.tsbuildinfo
+/apps/web/test-results/
 
 # Database
 *.db

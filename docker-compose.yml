@@ -62,12 +62,13 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+        API_INTERNAL_URL: http://api:8000
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     environment:
       APP_ENV: ${APP_ENV:-development}
       DEMO_MODE: ${DEMO_MODE:-false}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      API_INTERNAL_URL: http://api:8000
     depends_on:
       api:
         condition: service_healthy

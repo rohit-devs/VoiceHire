@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AuthMode } from "@/lib/auth-mode";
+import { ButtonLink, Card } from "@/components/ui/primitives";
 
 type AuthFallbackProps = {
   mode: AuthMode;
@@ -12,7 +13,7 @@ export default function AuthFallback({ mode, action }: AuthFallbackProps) {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#0a0a0f] px-4 py-10 text-white">
-      <section className="w-full max-w-md space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-8">
+      <Card className="w-full max-w-md space-y-5 p-6 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">
           {localDemo ? "Local development demo" : "Authentication unavailable"}
         </p>
@@ -31,12 +32,12 @@ export default function AuthFallback({ mode, action }: AuthFallbackProps) {
             : "Configure both Clerk publishable and secret keys to enable account authentication."}
         </p>
         {localDemo && (
-          <Link
+          <ButtonLink
             href="/onboarding"
-            className="block rounded-xl bg-violet-600 px-5 py-3 text-center font-semibold text-white hover:bg-violet-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
+            className="w-full"
           >
             Continue as local demo user
-          </Link>
+          </ButtonLink>
         )}
         {isSignUp ? (
           <Link
@@ -53,7 +54,7 @@ export default function AuthFallback({ mode, action }: AuthFallbackProps) {
             Create an account
           </Link>
         )}
-      </section>
+      </Card>
     </main>
   );
 }

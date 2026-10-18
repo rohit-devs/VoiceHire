@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm -r --parallel --if-present dev",
+    "dev:lan": "pnpm -r --parallel --if-present dev:lan",
     "dev:web": "pnpm --filter @voicehire/web dev",
     "dev:api": "pnpm --filter @voicehire/api dev",
     "build": "pnpm -r --if-present build",

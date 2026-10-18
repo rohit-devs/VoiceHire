@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type AppMode = "demo" | "live";
-type BannerState = AppMode | "loading" | "unavailable";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+type BannerState = "demo" | "live" | "loading" | "unavailable";
 
 export default function DemoModeBanner() {
   const [state, setState] = useState<BannerState>("loading");
@@ -16,7 +12,7 @@ export default function DemoModeBanner() {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 5000);
 
-    fetch(`${API_URL}/`, { cache: "no-store", signal: controller.signal })
+    fetch("/api/health/ready", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`Could not determine API mode: HTTP ${response.status}`);
@@ -25,15 +21,18 @@ export default function DemoModeBanner() {
         if (
           typeof body !== "object" ||
           body === null ||
-          !("mode" in body) ||
-          (body.mode !== "demo" && body.mode !== "live")
+          !("demo_mode" in body) ||
+          typeof body.demo_mode !== "boolean"
         ) {
           throw new Error("API returned an invalid mode response");
         }
-        if (active) setState(body.mode);
+        if (active) setState(body.demo_mode ? "demo" : "live");
       })
       .catch(() => {
         if (active) setState("unavailable");
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
       });
 
     return () => {
@@ -51,12 +50,12 @@ export default function DemoModeBanner() {
   const isDemo = state === "demo";
   const message = isDemo
     ? "Demo mode — simulated sessions are opt-in and labeled separately"
-    : `API unreachable at ${API_URL} — start the backend`;
+    : `API unreachable at ${new URL("/api", window.location.href).toString()} — start the backend`;
   return (
-    <div className="pointer-events-none fixed left-0 right-0 top-3 z-50 flex justify-center px-3">
+    <div className="flex justify-center px-3 py-2">
       <div
         role="status"
-        className={`max-w-full rounded-full border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+        className={`max-w-full rounded-full border px-3 py-1 text-center text-xs font-medium ${
           isDemo
             ? "border-amber-300/30 bg-amber-950/90 text-amber-100"
             : "border-slate-600 bg-slate-900/95 text-slate-200"

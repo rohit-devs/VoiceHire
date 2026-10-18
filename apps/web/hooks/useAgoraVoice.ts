@@ -52,7 +52,7 @@ type ListenerCleanup = () => void;
 
 export function useAgoraVoice({
   sessionId,
-  apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  apiUrl = process.env.NEXT_PUBLIC_API_URL || "",
   authToken = null,
   reconnectLimit = 3,
 }: UseAgoraVoiceOptions): UseAgoraVoiceReturn {

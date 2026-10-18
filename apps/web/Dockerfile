@@ -5,9 +5,9 @@ RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
 COPY . .
 RUN pnpm install --frozen-lockfile
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG API_INTERNAL_URL=http://127.0.0.1:8000
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
+ENV API_INTERNAL_URL=${API_INTERNAL_URL} \
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 RUN pnpm --filter @voicehire/web build
 

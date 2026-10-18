@@ -1,0 +1,90 @@
+- generic [ref=f4e1]:
+  - generic:
+    - status: Demo mode — simulated sessions are opt-in and labeled separately
+  - generic [ref=f4e2]:
+    - complementary [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - generic [ref=f4e5]:
+          - link "VoiceHire AI Interviewer & Communication Coach" [ref=f4e6] [cursor=pointer]:
+            - /url: /dashboard
+            - generic [ref=f4e13]:
+              - generic [ref=f4e14]: VoiceHire
+              - generic [ref=f4e15]: AI Interviewer & Communication Coach
+          - button "Collapse sidebar" [ref=f4e16] [cursor=pointer]
+        - navigation [ref=f4e19]:
+          - link "Dashboard" [ref=f4e20] [cursor=pointer]:
+            - /url: /dashboard
+          - link "New Interview" [ref=f4e27] [cursor=pointer]:
+            - /url: /interview/new
+          - link "Interviews" [ref=f4e32] [cursor=pointer]:
+            - /url: /interviews
+          - link "Reports" [ref=f4e38] [cursor=pointer]:
+            - /url: /reports
+          - link "AI Coach" [ref=f4e42] [cursor=pointer]:
+            - /url: /coach
+          - link "Progress" [ref=f4e47] [cursor=pointer]:
+            - /url: /progress
+          - link "Settings" [ref=f4e52] [cursor=pointer]:
+            - /url: /settings
+        - generic [ref=f4e58]:
+          - generic [aria-hidden] [ref=f4e60]: D
+          - generic [ref=f4e63]:
+            - paragraph [ref=f4e64]: Demo User
+            - paragraph [ref=f4e65]: demo@voicehire.ai
+    - main [ref=f4e66]:
+      - generic [ref=f4e68]:
+        - generic [ref=f4e69]:
+          - heading "New Interview" [level=1] [ref=f4e70]
+          - paragraph [ref=f4e71]: Configure your AI interview session
+        - generic [ref=f4e73]:
+          - generic [ref=f4e74]: Role & Type
+          - generic [ref=f4e82]: Profile
+          - generic [ref=f4e90]: Job Description
+          - generic [ref=f4e98]: Preferences
+          - generic [ref=f4e106]: Review
+        - generic [ref=f4e112]:
+          - generic [ref=f4e168]:
+            - heading "Interview Preferences" [level=2] [ref=f4e169]
+            - generic [ref=f4e170]:
+              - text: AI Persona
+              - generic [ref=f4e171]:
+                - button [ref=f4e172] [cursor=pointer]:
+                  - paragraph [ref=f4e173]: Friendly Startup Founder
+                  - paragraph [ref=f4e174]: Warm, encouraging, startup-focused
+                - button [pressed] [ref=f4e175] [cursor=pointer]:
+                  - paragraph [ref=f4e176]: Deep Technical Lead
+                  - paragraph [ref=f4e177]: Rigorous, detail-oriented, technical
+                - button [ref=f4e178] [cursor=pointer]:
+                  - paragraph [ref=f4e179]: HR Recruiter
+                  - paragraph [ref=f4e180]: Professional, structured, people-focused
+                - button [ref=f4e181] [cursor=pointer]:
+                  - paragraph [ref=f4e182]: Stress Interviewer
+                  - paragraph [ref=f4e183]: Challenging, high-pressure, adaptive
+            - generic [ref=f4e184]:
+              - checkbox "Simulated demo" [ref=f4e185]
+              - generic [ref=f4e186]:
+                - generic [ref=f4e187]: Simulated demo
+                - generic [ref=f4e188]: Uses a deterministic simulated interviewer. This session and its transcript are marked as simulated and are excluded from evaluations.
+            - generic [ref=f4e189]:
+              - text: Difficulty
+              - generic [ref=f4e190]:
+                - button [ref=f4e191] [cursor=pointer]:
+                  - paragraph [ref=f4e192]: Easy
+                - button [pressed] [ref=f4e193] [cursor=pointer]:
+                  - paragraph [ref=f4e194]: Medium
+                - button [ref=f4e195] [cursor=pointer]:
+                  - paragraph [ref=f4e196]: Hard
+            - generic [ref=f4e197]:
+              - text: Duration
+              - generic [ref=f4e198]:
+                - button [ref=f4e199] [cursor=pointer]:
+                  - paragraph [ref=f4e200]: 15 min
+                - button [pressed] [ref=f4e201] [cursor=pointer]:
+                  - paragraph [ref=f4e202]: 30 min
+                - button [ref=f4e203] [cursor=pointer]:
+                  - paragraph [ref=f4e204]: 45 min
+          - generic [ref=f4e138]:
+            - button "Back" [ref=f4e159] [cursor=pointer]
+            - button "Continue" [active] [ref=f4e139] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=f4e147] [cursor=pointer]
+  - alert [ref=f4e151]

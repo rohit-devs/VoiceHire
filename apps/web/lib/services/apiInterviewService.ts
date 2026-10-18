@@ -15,7 +15,7 @@ import type {
   PerformanceHistory,
 } from "@/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 let _authToken: string | null = null;
 let _authTokenProvider: (() => Promise<string | null>) | null = null;

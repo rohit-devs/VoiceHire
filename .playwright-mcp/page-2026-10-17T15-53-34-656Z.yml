@@ -1,0 +1,79 @@
+- generic [ref=f4e2]:
+  - complementary [ref=f4e3]:
+    - generic [ref=f4e4]:
+      - generic [ref=f4e5]:
+        - link "VoiceHire AI Interviewer & Communication Coach" [ref=f4e6] [cursor=pointer]:
+          - /url: /dashboard
+          - generic [ref=f4e13]:
+            - generic [ref=f4e14]: VoiceHire
+            - generic [ref=f4e15]: AI Interviewer & Communication Coach
+        - button "Collapse sidebar" [ref=f4e16] [cursor=pointer]
+      - navigation [ref=f4e19]:
+        - link "Dashboard" [ref=f4e20] [cursor=pointer]:
+          - /url: /dashboard
+        - link "New Interview" [ref=f4e27] [cursor=pointer]:
+          - /url: /interview/new
+        - link "Interviews" [ref=f4e32] [cursor=pointer]:
+          - /url: /interviews
+        - link "Reports" [ref=f4e38] [cursor=pointer]:
+          - /url: /reports
+        - link "AI Coach" [ref=f4e42] [cursor=pointer]:
+          - /url: /coach
+        - link "Progress" [ref=f4e47] [cursor=pointer]:
+          - /url: /progress
+        - link "Settings" [ref=f4e52] [cursor=pointer]:
+          - /url: /settings
+      - generic [ref=f4e58]:
+        - generic [aria-hidden] [ref=f4e60]: "?"
+        - generic [ref=f4e63]:
+          - paragraph [ref=f4e64]: Profile unavailable
+          - paragraph [ref=f4e65]: Account data unavailable
+  - main [ref=f4e66]:
+    - generic [ref=f4e68]:
+      - generic [ref=f4e69]:
+        - heading "New Interview" [level=1] [ref=f4e70]
+        - paragraph [ref=f4e71]: Configure your AI interview session
+      - generic [ref=f4e73]:
+        - generic [ref=f4e74]: Role & Type
+        - generic [ref=f4e82]: Profile
+        - generic [ref=f4e90]: Job Description
+        - generic [ref=f4e98]: Preferences
+        - generic [ref=f4e106]: Review
+      - generic [ref=f4e112]:
+        - generic [ref=f4e113]:
+          - heading "Role & Interview Type" [level=2] [ref=f4e114]
+          - generic [ref=f4e115]:
+            - text: Job Role
+            - textbox "Job Role" [ref=f4e116]:
+              - /placeholder: e.g. Full Stack Developer
+          - generic [ref=f4e117]:
+            - text: Experience Level
+            - combobox "Experience Level" [ref=f4e118]:
+              - option "Select experience level" [selected]
+              - option "Fresher (0-1 year)"
+              - option "Junior (1-3 years)"
+              - option "Mid (3-5 years)"
+              - option "Senior (5-8 years)"
+              - option "Lead (8+ years)"
+          - generic [ref=f4e119]:
+            - text: Company
+            - textbox "e.g. Amazon, Google, Startup" [ref=f4e120]
+          - generic [ref=f4e121]:
+            - text: Interview Type
+            - generic [ref=f4e122]:
+              - button [ref=f4e123] [cursor=pointer]:
+                - paragraph [ref=f4e124]: Technical
+                - paragraph [ref=f4e125]: Coding, architecture, and system design
+              - button [ref=f4e126] [cursor=pointer]:
+                - paragraph [ref=f4e127]: HR
+                - paragraph [ref=f4e128]: Culture fit, experience, and soft skills
+              - button [ref=f4e129] [cursor=pointer]:
+                - paragraph [ref=f4e130]: Behavioral
+                - paragraph [ref=f4e131]: Past experiences and situational questions
+              - button [ref=f4e132] [cursor=pointer]:
+                - paragraph [ref=f4e133]: Mixed
+                - paragraph [ref=f4e134]: Combination of technical and behavioral
+              - button [ref=f4e135] [cursor=pointer]:
+                - paragraph [ref=f4e136]: System Design
+                - paragraph [ref=f4e137]: Large-scale distributed systems
+        - button "Continue" [disabled] [ref=f4e139]
