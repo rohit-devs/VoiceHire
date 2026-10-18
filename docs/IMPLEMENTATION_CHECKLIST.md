@@ -368,3 +368,22 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 browser tests passed in 2.4 minutes. |
 | `git check-ignore .playwright-mcp/before-live-375.png` | Correctly ignored by `.playwright-mcp/`. |
 | `Test-Path apps\web\e2e\before-landing-375.png` | `False`; requested screenshot removed. |
+
+## Report, LAN, and secure-context verification (2026-10-18)
+
+- Report detail renders a persisted AI score summary, strengths, weaknesses/missing elements, and a seven-day coaching grid using shared `Card` primitives. Only stored coaching exercises are populated; absent days state that no task was returned, and an unavailable plan is reported rather than fabricated.
+- The browser API service and Agora token request default to an empty API base, so they use relative `/api` paths. `next.config.js` rewrites `/api/:path*` to the server-only `API_INTERNAL_URL` backend origin. `useInterviewWebSocket` defaults to the current page origin and switches `http:` to `ws:` and `https:` to `wss:`.
+- `rg 'localhost|127\.0\.0\.1' apps/web` still reports the server-side development proxy fallback and the deliberately isolated loopback hosts/assertion in Playwright configuration. It also matches the user-facing secure-context text and its assertions. These are not browser API base URLs; the root `.env.example` now leaves `NEXT_PUBLIC_API_URL` blank by default so LAN browsers use the same-origin proxy.
+- Both interview prepare and live screens check `window.isSecureContext`, explain “Microphone needs HTTPS or localhost,” and leave typed answers available. The Playwright demo-flow test exercises an insecure context and confirms its text fallback.
+- `SETUP_GUIDE.md` now documents `DEV_ALLOWED_ORIGINS` for a LAN IP, private-profile Windows firewall rules, `next dev --experimental-https`, and the risks of HTTPS tunnels.
+
+### Verification
+
+| Command / check | Result |
+|---|---|
+| `rg 'localhost|127\.0\.0\.1' apps/web` | Matches limited to Next's internal dev proxy fallback, Playwright loopback setup/assertion, microphone copy and related assertions; no browser-service absolute loopback API URL. |
+| Report source inspection | Score summary, strengths, weaknesses, seven plan-day slots, and shared `Card` usage present in `apps/web/app/reports/[id]/page.tsx`. |
+| Proxy/WebSocket source inspection | `/api/:path*` rewrite and current-origin `ws:`/`wss:` derivation confirmed. |
+| Secure-context source inspection | Prepare/live warnings and text-answer fallback confirmed; Playwright covers insecure live flow. |
+| Setup-guide source inspection | Firewall, allowed dev origins, HTTPS dev cert and tunnel instructions present. |
+| `pnpm --filter @voicehire/web type-check` after each documentation/config edit | Exit 0 after each edit. |
