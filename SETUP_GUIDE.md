@@ -28,13 +28,13 @@ sqlite+aiosqlite:///./voicehire_local.db
 
 Use a fresh local database file for Alembic setup. Existing legacy SQLite files without an Alembic version stamp are not auto-adopted; keep them as-is and use a new filename rather than deleting or reusing them. Keep `APP_ENV=development` and `DEMO_MODE=true` only for local simulated usage. The local demo user is shared and has no Clerk authentication; never use it with real candidate data. Clerk, OpenAI, and Agora values may remain empty for text/demo use.
 
-Create `apps\web\.env.local` with only public web settings and the explicit development/demo flags:
+Create `apps\web\.env.local` with the explicit development/demo flags and the server-side URL used by the Next.js API proxy. Leave `NEXT_PUBLIC_API_URL` unset so browser requests use same-origin relative `/api` URLs:
 
 ```powershell
 @'
 APP_ENV=development
 DEMO_MODE=true
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+API_INTERNAL_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_DEMO_MODE=true
 '@ | Set-Content apps\web\.env.local
 ```
@@ -76,6 +76,37 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health/ready
 Invoke-RestMethod http://127.0.0.1:8000/api/health/live
 ```
 
+## Access from another device on your LAN
+
+The same-origin `/api/*` rewrite forwards browser requests from the Next.js server to `API_INTERNAL_URL`; do not set `NEXT_PUBLIC_API_URL` to `127.0.0.1`, because that address would refer to the browser's own device. On the development computer, activate the API virtual environment and start both apps from the repository root:
+
+```powershell
+.\apps\api\.venv\Scripts\Activate.ps1
+pnpm dev:lan
+```
+
+Find the development computer's private IPv4 address with `ipconfig`, then open `http://<LAN-IP>:3000` from a device on the same network. Keep `API_INTERNAL_URL=http://127.0.0.1:8000` on the development computer: the Next.js proxy reaches the API locally, while the browser stays on the web origin. If you intentionally call the API directly from another device, set the API's `CORS_ORIGINS` to the exact web origin(s), including the LAN IP, and expose port 8000 only when needed.
+
+If Windows Firewall blocks access, add an inbound rule for the web server on the **Private** profile from an elevated PowerShell prompt:
+
+```powershell
+New-NetFirewallRule -DisplayName "VoiceHire Next.js dev (Private)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000 -Profile Private
+```
+
+For direct API access only, add port 8000 separately and restrict it to the Private profile:
+
+```powershell
+New-NetFirewallRule -DisplayName "VoiceHire API dev (Private)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private
+```
+
+Microphone access requires a secure browser context. `http://localhost` works for local testing; an HTTP LAN IP does not. For LAN voice testing, use Next.js's development HTTPS certificate:
+
+```powershell
+pnpm --filter @voicehire/web exec next dev --hostname 0.0.0.0 --experimental-https
+```
+
+Run the API separately with `pnpm --filter @voicehire/api dev:lan`. Alternatively, use a trusted HTTPS development tunnel that forwards to port 3000. Tunnels may make your development app reachable outside the LAN: use demo data only and do not expose credentials or real candidate data. The text-answer fallback remains available without HTTPS.
+
 ## Linux/macOS: native development
 
 From the repository root:
@@ -97,13 +128,13 @@ python -m pip install -e 'apps/api[dev]'
 pnpm --filter @voicehire/api db:migrate
 ```
 
-Create `apps/web/.env.local` with the development flags and public API URL:
+Create `apps/web/.env.local` with the development flags and server-side proxy target:
 
 ```sh
 printf '%s\n' \
   'APP_ENV=development' \
   'DEMO_MODE=true' \
-  'NEXT_PUBLIC_API_URL=http://127.0.0.1:8000' \
+  'API_INTERNAL_URL=http://127.0.0.1:8000' \
   > apps/web/.env.local
 ```
 
@@ -116,6 +147,8 @@ pnpm --filter @voicehire/api dev
 ```sh
 pnpm --filter @voicehire/web dev
 ```
+
+For LAN access, activate the API virtual environment and run `pnpm dev:lan` from the repository root. Open `http://<LAN-IP>:3000` from a device on the same network. Allow inbound TCP port 3000 in the host firewall on its private-network profile; port 8000 is only needed for direct API access. For microphone access from the LAN, use a trusted HTTPS tunnel or run `pnpm --filter @voicehire/web exec next dev --hostname 0.0.0.0 --experimental-https` and run the API separately with `pnpm --filter @voicehire/api dev:lan`. Never use real candidate data through a public tunnel.
 
 ## Complete Docker stack
 
@@ -151,6 +184,6 @@ Playwright starts its own API and web servers, uses a fresh temporary SQLite dat
 
 ## Environment and credentials
 
-The root `.env.example` lists API, Compose, and public web build variables. `DATABASE_URL`, `OPENAI_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. Only `NEXT_PUBLIC_API_URL` and the Clerk publishable key may be exposed to the browser. Never put a server-only key in a `NEXT_PUBLIC_*` variable or commit a populated `.env`.
+The root `.env.example` lists API, Compose, and public web build variables. `DATABASE_URL`, `API_INTERNAL_URL`, `OPENAI_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. The browser uses relative API URLs by default; only the optional `NEXT_PUBLIC_API_URL` override and Clerk publishable key may be exposed to the browser. Never put a server-only key in a `NEXT_PUBLIC_*` variable or commit a populated `.env`.
 
 Deployment settings and platform commands are in [DEPLOYMENT.md](./DEPLOYMENT.md). Schema ownership details are in [docs/database-setup.md](./docs/database-setup.md). Common failures are covered by [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
