@@ -101,3 +101,7 @@ yarn.lock
 
 # Prisma
 prisma/migrations/
+
+apps/web/test-results/
+.playwright-mcp/
+apps/web/.next-playwright/
