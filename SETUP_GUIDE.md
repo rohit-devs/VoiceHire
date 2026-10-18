@@ -85,7 +85,7 @@ The same-origin `/api/*` rewrite forwards browser requests from the Next.js serv
 pnpm dev:lan
 ```
 
-Find the development computer's private IPv4 address with `ipconfig`, then open `http://<LAN-IP>:3000` from a device on the same network. Keep `API_INTERNAL_URL=http://127.0.0.1:8000` on the development computer: the Next.js proxy reaches the API locally, while the browser stays on the web origin. If you intentionally call the API directly from another device, set the API's `CORS_ORIGINS` to the exact web origin(s), including the LAN IP, and expose port 8000 only when needed.
+Find the development computer's private IPv4 address with `ipconfig`, set `DEV_ALLOWED_ORIGINS=<LAN-IP>` in `apps\web\.env.local` (comma-separated host names/IPs without a scheme), and restart Next.js. Then open `http://<LAN-IP>:3000` from a device on the same network. Keep `API_INTERNAL_URL=http://127.0.0.1:8000` on the development computer: the Next.js proxy reaches the API locally, while the browser stays on the web origin. If you intentionally call the API directly from another device, set the API's `CORS_ORIGINS` to the exact web origin(s), including the LAN IP, and expose port 8000 only when needed.
 
 If Windows Firewall blocks access, add an inbound rule for the web server on the **Private** profile from an elevated PowerShell prompt:
 
