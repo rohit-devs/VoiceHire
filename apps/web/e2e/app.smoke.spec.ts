@@ -23,7 +23,7 @@ async function enterLocalDemo(page: Page) {
   await page.goto("/sign-in");
   await captureResponsiveScreenshots(page, "sign-in");
   await page.getByRole("link", { name: "Continue as local demo user" }).click();
-  await expect(page).toHaveURL(/onboarding/);
+  await expect(page).toHaveURL(/onboarding/, { timeout: 30_000 });
   await captureResponsiveScreenshots(page, "onboarding");
   await page.getByLabel("Target role").fill("Backend Engineer");
   await page.getByLabel("Professional background").fill("Built asynchronous Python APIs and PostgreSQL services.");
@@ -113,21 +113,28 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
   expect((await createSessionResponse).ok()).toBeTruthy();
   expect((await startSessionResponse).ok()).toBeTruthy();
   await expect(page).toHaveURL(/\/interview\/prepare\//, { timeout: 60_000 });
-  await expect(page.getByText(/Microphone needs HTTPS or localhost/i)).toBeVisible();
+  await expect(
+    page.getByText(/Microphone needs HTTPS or localhost\. You can continue with typed answers/),
+  ).toBeVisible();
   await captureResponsiveScreenshots(page, "interview-prepare");
   await page.getByRole("button", { name: "Enter Interview" }).click();
   await expect(page).toHaveURL(/\/interview\/live\//, { timeout: 60_000 });
   await expect(page.getByText("Simulated demo", { exact: true })).toBeVisible();
 
-  await expect(page.getByText(/Microphone needs HTTPS or localhost/i)).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Type your answer" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Microphone needs HTTPS or localhost. Continue by typing your answer below.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: /Voice unavailable/i })).toBeDisabled();
   const websocketConnected = page.waitForEvent("websocket");
   await page.getByRole("button", { name: "Start Interview" }).click();
   const websocket = await websocketConnected;
   expect(new URL(websocket.url()).host).toBe("127.0.0.1:3101");
+  await expect(page.getByRole("textbox", { name: "Type your answer" })).toBeVisible();
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
-  await expect(page.getByText("AI speaking", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ready for your answer", { exact: true })).toBeVisible();
   await captureResponsiveScreenshots(page, "interview-live");
   await page.getByPlaceholder("Type your answer").fill(
     "I reduced database latency by adding a PostgreSQL index and measured the improvement in production.",

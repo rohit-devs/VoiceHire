@@ -136,7 +136,7 @@ export default function HomePage() {
                   <p className="mt-1 text-sm text-slate-400">
                     An illustrative preview — no candidate data or scores
                   </p>
-                </Card>
+                </div>
                 <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-medium text-emerald-200">
                   Ready to practice
                 </span>
@@ -191,8 +191,8 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+          </Card>
           </div>
-        </div>
       </section>
 
       <section

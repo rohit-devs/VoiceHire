@@ -532,7 +532,7 @@ export default function LiveInterviewPage() {
                       audioLevel={agoraState === "connected" ? audioLevel : 0}
                       connected={agoraState === "connected"}
                     />
-                  </Card>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-semibold text-white">AI Interviewer</span>
@@ -576,7 +576,7 @@ export default function LiveInterviewPage() {
                     )}
                   </div>
                 </div>
-              </div>
+              </Card>
 
               {/* User Response Card */}
               {transcripts.filter(t => t.speaker === "candidate").length > 0 && (
@@ -584,7 +584,7 @@ export default function LiveInterviewPage() {
                   <div className="flex items-start gap-4">
                     <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
                       <span className="text-xs font-bold text-white">You</span>
-                    </Card>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-semibold text-emerald-300">You</span>
@@ -602,7 +602,7 @@ export default function LiveInterviewPage() {
                       </p>
                     </div>
                   </div>
-                </div>
+                </Card>
               )}
 
               {/* Controls */}

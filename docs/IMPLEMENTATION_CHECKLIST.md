@@ -314,3 +314,37 @@ Known failures and caveats:
 
 - Clerk-hosted authentication still requires test keys; live Agora voice and OpenAI output require their respective credentials.
 - Docker/PostgreSQL, GitHub Actions execution, and deployment remain unverified as described in the whole-system baseline above.
+
+## CI failure reproduction and fixes (2026-10-18)
+
+### Workflow commands
+
+The checked-in `.github/workflows/ci.yml` runs:
+
+- Frontend: `pnpm --filter @voicehire/web type-check`, `pnpm --filter @voicehire/web lint`, and `pnpm --filter @voicehire/web build`.
+- Browser tests: `pnpm --filter @voicehire/web test:e2e` after installing Chromium and API dependencies.
+- API tests: `python -m pytest tests/ -v` from `apps/api`.
+
+### Root causes and changes
+
+- The landing page product-preview markup closed a `Card` in place of an inner `div`, then left an extra closing `div` before the section end. TypeScript, ESLint, Next build, and Next dev all rejected the malformed JSX. Restored the intended nesting; frontend type-check, lint, and build now pass.
+- The demo navigation assertion used Playwright's default 5-second URL timeout, and one full run timed out while loading `/onboarding`. The response was HTTP 200 when rerun independently; raised this specific navigation assertion timeout to 30 seconds without changing auth or skipping the route.
+- The live-room E2E asserted the typed-answer field before starting the interview, although the UI only presents answer controls after the interview starts. It also used a broad microphone-warning selector that matched both the warning and a separate status message. The test now matches the warning text exactly, starts the interview before checking the input, and asserts the truthful `Ready for your answer` state rather than `AI speaking` in text-only mode.
+- No API changes were made. Existing API tests remain green.
+
+### Reproduction and final verification
+
+| Command / check | Result |
+|---|---|
+| `pnpm --filter @voicehire/web type-check` before fixing JSX | Failed with TS2657 and unmatched JSX-tag errors in `apps/web/app/page.tsx` (lines 88, 196–197, 289–290). |
+| `pnpm --filter @voicehire/web lint` before fixing JSX | Failed parsing `apps/web/app/page.tsx` at line 196: expected closing `section`. |
+| `pnpm --filter @voicehire/web build` before fixing JSX | Failed compilation at `apps/web/app/page.tsx:196` due unexpected JSX closing markup. |
+| `pnpm --filter @voicehire/web test:e2e -- --workers=1` before E2E corrections | Failed: one onboarding URL timeout and one ambiguous microphone-message locator. A subsequent run also showed the answer field was expected before interview start. |
+| `pnpm --filter @voicehire/web type-check` after fixes | Exit 0. |
+| `pnpm --filter @voicehire/web lint` after fixes | Exit 0; no ESLint warnings or errors (Next reports `next lint` deprecated). |
+| `pnpm --filter @voicehire/web build` after fixes | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
+| `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; 4 tests passed. |
+| Exact CI command `pnpm --filter @voicehire/web test:e2e` | Exit 0; 4 tests passed in 2.1 minutes, 1 worker (the config has one spec file and `fullyParallel: false`). |
+| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests\ -v` | Exit 0; 45 passed, 40 warnings in 25.81s. No API code changed. |
+| `git diff --check` | Exit 0; only Windows line-ending notices for the existing modified live interview file. |
