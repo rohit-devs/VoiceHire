@@ -75,6 +75,7 @@ coverage/
 .coverage
 *.tsbuildinfo
 /apps/web/test-results/
+.playwright-mcp/
 
 # Database
 *.db

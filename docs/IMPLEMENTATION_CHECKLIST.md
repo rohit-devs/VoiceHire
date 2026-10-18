@@ -348,3 +348,23 @@ The checked-in `.github/workflows/ci.yml` runs:
 | Exact CI command `pnpm --filter @voicehire/web test:e2e` | Exit 0; 4 tests passed in 2.1 minutes, 1 worker (the config has one spec file and `fullyParallel: false`). |
 | `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests\ -v` | Exit 0; 45 passed, 40 warnings in 25.81s. No API code changed. |
 | `git diff --check` | Exit 0; only Windows line-ending notices for the existing modified live interview file. |
+
+## Landing-page staged recovery and screenshot cleanup (2026-10-18)
+
+- Restored `apps/web/app/page.tsx` from `HEAD`. The requested step 3 changes were already part of `HEAD`: `ButtonLink`/`Card` imports, a single “Try demo interview” CTA targeting `/sign-in`, the simulated-data disclaimer, and a correctly nested `<Card>` preview wrapper. No landing-page edits or per-step commits were needed; no-op commits were not created.
+- The live interview page remained in `HEAD`; type-check and lint both passed after the restore, so it was retained.
+- Removed `apps/web/e2e/before-landing-375.png`. Added `.playwright-mcp/` to `.gitignore` and removed its previously tracked screenshot/snapshot artifacts from the Git index. The local ignored `.playwright-mcp` data is left in place.
+
+### Verification
+
+| Command / check | Result |
+|---|---|
+| `pnpm --filter @voicehire/web type-check` after restoring landing page | Exit 0. |
+| `pnpm --filter @voicehire/web lint` after restoring landing page | Exit 0; no ESLint warnings/errors (Next prints the `next lint` deprecation notice). |
+| `pnpm --filter @voicehire/web type-check` final | Exit 0. |
+| `pnpm --filter @voicehire/web lint` final | Exit 0; no ESLint warnings/errors. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 generated 18 routes. |
+| `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 browser tests passed in 2.4 minutes. |
+| `git check-ignore .playwright-mcp/before-live-375.png` | Correctly ignored by `.playwright-mcp/`. |
+| `Test-Path apps\web\e2e\before-landing-375.png` | `False`; requested screenshot removed. |
