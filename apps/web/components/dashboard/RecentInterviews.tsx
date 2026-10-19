@@ -9,12 +9,6 @@ interface RecentInterviewsProps {
 }
 
 export function RecentInterviews({ interviews }: RecentInterviewsProps) {
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-emerald-400";
-    if (score >= 60) return "text-amber-400";
-    return "text-rose-400";
-  };
-
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
       technical: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -35,10 +29,13 @@ export function RecentInterviews({ interviews }: RecentInterviewsProps) {
         </Link>
       </div>
       <div className="space-y-3">
+        {interviews.length === 0 && (
+          <p role="status" className="text-sm text-muted-foreground">Your saved interview sessions will appear here.</p>
+        )}
         {interviews.map((interview) => (
           <Link
             key={interview.id}
-            href={`/reports/${interview.id}`}
+            href={interview.currentState === "completed" ? `/reports/${interview.id}` : `/interview/live/${interview.id}`}
             className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] p-4 transition-all duration-200 hover:border-white/15 hover:bg-white/[0.04] group"
           >
             <div className="flex items-center gap-4">
@@ -53,6 +50,7 @@ export function RecentInterviews({ interviews }: RecentInterviewsProps) {
                   <span className={`text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full border ${getTypeColor(interview.interviewType)}`}>
                     {interview.interviewType.replace("_", " ")}
                   </span>
+                  {interview.isDemo && <span className="text-[10px] text-amber-200">Simulated demo</span>}
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     {interview.duration}m
@@ -61,7 +59,7 @@ export function RecentInterviews({ interviews }: RecentInterviewsProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className={`text-lg font-bold ${getScoreColor(82)}`}>82</span>
+              <span className="text-xs text-muted-foreground">{interview.currentState ?? "Status unavailable"}</span>
               <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
             </div>
           </Link>

@@ -10,6 +10,7 @@ Covers:
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 
@@ -17,21 +18,26 @@ from app.config import settings
 from app.database import async_session
 from app.main import app
 from app.auth import _DEMO_USER
+from app.models import InterviewSession, User
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://localhost") as client:
         yield client
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def reset_demo_mode():
     """Ensure DEMO_MODE is True for these tests."""
+    original_demo_mode = settings.DEMO_MODE
+    original_clerk_secret = settings.CLERK_SECRET_KEY
     settings.DEMO_MODE = True
     settings.CLERK_SECRET_KEY = "sk_test_placeholder_key_placeholder_placeholder"
     yield
+    settings.DEMO_MODE = original_demo_mode
+    settings.CLERK_SECRET_KEY = original_clerk_secret
 
 
 class TestAuthDemoMode:
@@ -45,6 +51,51 @@ class TestAuthDemoMode:
             json={"role": "Backend Engineer", "difficulty": "medium"},
         )
         assert response.status_code in (200, 201), response.text
+        data = response.json()
+        assert data["id"]
+        assert data["agora_channel"].startswith("vh-")
+        assert data["role"] == "Backend Engineer"
+        assert data["status"] == "created"
+
+    @pytest.mark.asyncio
+    async def test_create_session_persists_demo_user_ownership(self, client):
+        """Created sessions are persisted for the authenticated demo user."""
+        response = await client.post(
+            "/api/interviews/sessions",
+            json={"role": "Platform Engineer", "difficulty": "hard"},
+        )
+        assert response.status_code == 200, response.text
+        session = response.json()
+
+        db = async_session()
+        try:
+            result = await db.execute(
+                text(
+                    "SELECT id, user_id, role, difficulty, agora_channel "
+                    "FROM interview_sessions WHERE id = :id"
+                ),
+                {"id": session["id"]},
+            )
+            row = result.first()
+            assert row is not None
+            assert row.id == session["id"]
+            assert row.user_id == _DEMO_USER["id"]
+            assert row.role == "Platform Engineer"
+            assert row.difficulty == "hard"
+            assert row.agora_channel == session["agora_channel"]
+        finally:
+            await db.execute(
+                text("DELETE FROM interview_sessions WHERE id = :id"),
+                {"id": session["id"]},
+            )
+            await db.commit()
+            await db.close()
+
+    @pytest.mark.asyncio
+    async def test_create_session_invalid_request_returns_422(self, client):
+        """Missing required request data is rejected by Pydantic validation."""
+        response = await client.post("/api/interviews/sessions", json={})
+        assert response.status_code == 422, response.text
 
     @pytest.mark.asyncio
     async def test_create_session_with_invalid_token_demo(self, client):
@@ -63,6 +114,29 @@ class TestAuthDemoMode:
         assert response.status_code == 200, response.text
         data = response.json()
         assert data["email"] == _DEMO_USER["email"]
+
+    @pytest.mark.asyncio
+    async def test_update_profile_background_role_and_preferences(self, client):
+        response = await client.put(
+            "/api/users/me",
+            json={
+                "first_name": "Demo",
+                "last_name": "Candidate",
+                "target_role": "Backend Engineer",
+                "background": "Built reliable async APIs.",
+                "default_interview_persona": "technical_lead",
+                "default_interview_difficulty": "hard",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["target_role"] == "Backend Engineer"
+        assert response.json()["background"] == "Built reliable async APIs."
+        assert response.json()["default_interview_difficulty"] == "hard"
+
+        profile = await client.get("/api/users/me")
+        assert profile.status_code == 200, profile.text
+        assert profile.json()["first_name"] == "Demo"
+        assert profile.json()["background"] == "Built reliable async APIs."
 
 
 class TestAuthNonDemoMode:
@@ -111,23 +185,28 @@ class TestOwnership:
 
         db = async_session()
         try:
-            await db.execute(
-                text(
-                    "INSERT INTO interview_sessions "
-                    "(id, user_id, role, difficulty, status, current_state, agora_channel, persona, metadata) "
-                    "VALUES (:id, :user_id, :role, :difficulty, :status, :current_state, :agora_channel, :persona, :metadata)"
-                ),
-                {
-                    "id": session_id,
-                    "user_id": other_user_id,
-                    "role": "Engineer",
-                    "difficulty": "medium",
-                    "status": "scheduled",
-                    "current_state": "intro",
-                    "agora_channel": f"vh-{session_id[:8]}",
-                    "persona": "technical",
-                    "metadata": "{}",
-                },
+            db.add(
+                User(
+                    id=other_user_id,
+                    clerk_id=other_user_id,
+                    email=f"{other_user_id}@example.test",
+                    first_name="Other",
+                    last_name="User",
+                )
+            )
+            await db.flush()
+            db.add(
+                InterviewSession(
+                    id=session_id,
+                    user_id=other_user_id,
+                    role="Engineer",
+                    difficulty="medium",
+                    status="created",
+                    current_state="created",
+                    agora_channel=f"vh-{session_id[:8]}",
+                    persona="technical",
+                    metadata_json={},
+                )
             )
             await db.commit()
         finally:
@@ -136,14 +215,28 @@ class TestOwnership:
         # Demo user tries to access other user's session
         response = await client.get(f"/api/interviews/sessions/{session_id}")
         assert response.status_code == 403, response.text
+        transcript_response = await client.get(
+            f"/api/interviews/sessions/{session_id}/transcript"
+        )
+        assert transcript_response.status_code == 403, transcript_response.text
+        report_response = await client.get(
+            f"/api/evaluations/sessions/{session_id}/report"
+        )
+        assert report_response.status_code == 403, report_response.text
+        coaching_response = await client.get(
+            f"/api/evaluations/sessions/{session_id}/coaching-plan"
+        )
+        assert coaching_response.status_code == 403, coaching_response.text
 
         # Cleanup
         db = async_session()
         try:
-            await db.execute(
-                text("DELETE FROM interview_sessions WHERE id = :id"),
-                {"id": session_id},
-            )
+            session = await db.get(InterviewSession, session_id)
+            if session:
+                await db.delete(session)
+            other_user = await db.get(User, other_user_id)
+            if other_user:
+                await db.delete(other_user)
             await db.commit()
         finally:
             await db.close()

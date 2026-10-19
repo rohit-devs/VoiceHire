@@ -3,7 +3,6 @@
 interface TelemetryBarProps {
   metrics?: {
     clarity: number;
-    confidence: number;
     relevance: number;
     fillerWordsCount: number;
     avgWpm: number;
@@ -18,7 +17,6 @@ export function TelemetryBar({ metrics }: TelemetryBarProps) {
 
   const items = [
     { label: "Clarity", value: metrics.clarity, unit: "%" },
-    { label: "Confidence", value: metrics.confidence, unit: "%" },
     { label: "Relevance", value: metrics.relevance, unit: "%" },
     { label: "Filler Words", value: metrics.fillerWordsCount, unit: "" },
     { label: "WPM", value: metrics.avgWpm, unit: "" },

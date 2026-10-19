@@ -2,16 +2,20 @@
 import asyncio
 import os
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-os.environ["NODE_ENV"] = "development"
-os.environ["OPENAI_API_KEY"] = "sk-test-fake-key-for-testing-only-min-20-chars"
-os.environ["CLERK_PUBLISHABLE_KEY"] = "pk_test_fake"
-os.environ["CLERK_SECRET_KEY"] = "sk_test_fake_placeholder_key_placeholder_placeholder"
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test_voicehire.db"
+os.environ["APP_ENV"] = "development"
+os.environ["DEMO_MODE"] = "true"
+os.environ["OPENAI_API_KEY"] = "test-only-openai-placeholder-not-a-secret"
+os.environ["CLERK_SECRET_KEY"] = "test-only-clerk-placeholder-not-a-secret"
+_test_database_dir = tempfile.TemporaryDirectory(prefix="voicehire-tests-")
+_test_database_path = Path(_test_database_dir.name) / "voicehire.db"
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_database_path.as_posix()}"
 
 
 @pytest.fixture(scope="session")

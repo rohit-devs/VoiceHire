@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
-import { interviewService } from "@/lib/services";
+import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
 import { useInterviewStore } from "@/stores/interviewStore";
 import {
   ArrowRight,
@@ -14,10 +14,11 @@ import {
   Settings2,
   Check,
 } from "lucide-react";
+import type { InterviewConfig } from "@/types";
 
 type Step = "role" | "profile" | "jd" | "preferences" | "review";
 
-const INTERVIEW_TYPES = [
+const INTERVIEW_TYPES: { value: InterviewConfig["interviewType"]; label: string; desc: string }[] = [
   { value: "technical", label: "Technical", desc: "Coding, architecture, and system design" },
   { value: "hr", label: "HR", desc: "Culture fit, experience, and soft skills" },
   { value: "behavioral", label: "Behavioral", desc: "Past experiences and situational questions" },
@@ -25,14 +26,14 @@ const INTERVIEW_TYPES = [
   { value: "system_design", label: "System Design", desc: "Large-scale distributed systems" },
 ];
 
-const PERSONAS = [
+const PERSONAS: { value: InterviewConfig["persona"]; label: string; desc: string }[] = [
   { value: "friendly_founder", label: "Friendly Startup Founder", desc: "Warm, encouraging, startup-focused" },
   { value: "technical_lead", label: "Deep Technical Lead", desc: "Rigorous, detail-oriented, technical" },
   { value: "hr_recruiter", label: "HR Recruiter", desc: "Professional, structured, people-focused" },
   { value: "stress_interviewer", label: "Stress Interviewer", desc: "Challenging, high-pressure, adaptive" },
 ];
 
-const DIFFICULTIES = [
+const DIFFICULTIES: { value: InterviewConfig["difficulty"]; label: string; desc: string }[] = [
   { value: "easy", label: "Easy", desc: "Foundational concepts" },
   { value: "medium", label: "Medium", desc: "Practical application" },
   { value: "hard", label: "Hard", desc: "Advanced scenarios" },
@@ -54,9 +55,10 @@ const EXPERIENCE_LEVELS = [
 
 export default function NewInterviewPage() {
   const router = useRouter();
-  const { setCurrentInterview, setSessionId, setInterviewPhase, setBlueprint } = useInterviewStore();
+  const { setCurrentInterview, setSessionId, setInterviewPhase } = useInterviewStore();
   const [step, setStep] = useState<Step>("role");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const [config, setConfig] = useState({
     role: "",
@@ -67,10 +69,26 @@ export default function NewInterviewPage() {
     pressureMode: false,
     duration: 30,
     company: "",
-    resumeUploaded: false,
-    resumeFilename: "",
+    resumeText: "",
     jdText: "",
+    jobCategory: "",
+    isDemo: false,
   });
+
+  useEffect(() => {
+    let active = true;
+    void interviewService.getProfile().then((profile) => {
+      if (!active) return;
+      setConfig((current) => ({
+        ...current,
+        persona: profile.default_interview_persona,
+        difficulty: profile.default_interview_difficulty,
+      }));
+    }).catch((cause: unknown) => {
+      if (active) setError(cause instanceof Error ? cause.message : "Unable to load saved interview preferences.");
+    });
+    return () => { active = false; };
+  }, []);
 
   const stepOrder: Step[] = ["role", "profile", "jd", "preferences", "review"];
   const currentStepIndex = stepOrder.indexOf(step);
@@ -82,11 +100,11 @@ export default function NewInterviewPage() {
   const canProceed = () => {
     switch (step) {
       case "role":
-        return config.role && config.experienceLevel && config.interviewType && config.company;
+        return Boolean(config.role.trim() && config.experienceLevel && config.interviewType);
       case "profile":
-        return config.resumeUploaded;
+        return Boolean(config.resumeText.trim());
       case "jd":
-        return true;
+        return Boolean(config.jdText.trim() || config.jobCategory.trim());
       case "preferences":
         return config.persona && config.difficulty;
       case "review":
@@ -111,20 +129,18 @@ export default function NewInterviewPage() {
           duration: config.duration,
           company: config.company,
           interviewerType: config.persona,
+          resumeText: config.resumeText,
+          jobDescriptionText: config.jdText,
+          jobCategory: config.jobCategory,
+          isDemo: config.isDemo,
         });
         setCurrentInterview(interview);
-        
-        const blueprint = await interviewService.generateBlueprint(
-          `candidate-${interview.id}`,
-          `job-${interview.id}`,
-          interview.id
-        );
-        setBlueprint(blueprint);
-        
         const session = await interviewService.startInterview(interview.id);
         setSessionId(session.sessionId);
         setInterviewPhase("preparing");
         router.push(`/interview/prepare/${interview.id}`);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Unable to create the interview.");
       } finally {
         setLoading(false);
       }
@@ -199,9 +215,11 @@ export default function NewInterviewPage() {
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold text-white">Role & Interview Type</h2>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Job Role</label>
+                  <label htmlFor="interview-role" className="text-sm font-medium text-slate-300">Job Role</label>
                   <input
+                    id="interview-role"
                     type="text"
+                    required
                     value={config.role}
                     onChange={(e) => updateConfig({ role: e.target.value })}
                     placeholder="e.g. Full Stack Developer"
@@ -209,8 +227,9 @@ export default function NewInterviewPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Experience Level</label>
+                  <label htmlFor="experience-level" className="text-sm font-medium text-slate-300">Experience Level</label>
                   <select
+                    id="experience-level"
                     value={config.experienceLevel}
                     onChange={(e) => updateConfig({ experienceLevel: e.target.value })}
                     className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
@@ -236,8 +255,10 @@ export default function NewInterviewPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {INTERVIEW_TYPES.map((type) => (
                       <button
+                        type="button"
+                        aria-pressed={config.interviewType === type.value}
                         key={type.value}
-                        onClick={() => updateConfig({ interviewType: type.value as any })}
+                        onClick={() => updateConfig({ interviewType: type.value })}
                         className={`rounded-lg border p-4 text-left transition-all ${
                           config.interviewType === type.value
                             ? "border-violet-500/50 bg-violet-500/10"
@@ -256,53 +277,43 @@ export default function NewInterviewPage() {
             {step === "profile" && (
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold text-white">Candidate Profile</h2>
-                <div
-                  className={`rounded-xl border-2 border-dashed p-8 text-center transition-all cursor-pointer ${
-                    config.resumeUploaded
-                      ? "border-emerald-500/50 bg-emerald-500/5"
-                      : "border-white/10 bg-white/[0.02] hover:border-white/20"
-                  }`}
-                >
-                  {config.resumeUploaded ? (
-                    <div className="flex items-center justify-center gap-3">
-                      <FileText className="h-8 w-8 text-emerald-400" />
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-white">{config.resumeFilename || "Rohit_Resume_FullStack.pdf"}</p>
-                        <p className="text-xs text-emerald-400 mt-0.5">Uploaded successfully</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3">
-                      <Upload className="h-10 w-10 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium text-white">Upload your resume</p>
-                        <p className="text-xs text-muted-foreground mt-1">PDF format, max 5MB</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {config.resumeUploaded && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-slate-300">Extracted Skills</p>
-                    <div className="flex flex-wrap gap-2">
-                      {["React", "Node.js", "MongoDB", "JavaScript", "Express", "JWT"].map((skill) => (
-                        <span key={skill} className="rounded-full bg-violet-500/10 border border-violet-500/20 px-3 py-1 text-xs font-medium text-violet-300">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!config.resumeUploaded && (
-                  <button
-                    onClick={() => updateConfig({ resumeUploaded: true, resumeFilename: "Rohit_Resume_FullStack.pdf" })}
-                    className="w-full rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm font-medium text-violet-300 hover:bg-violet-500/20 transition-colors"
-                  >
-                    Simulate Resume Upload
-                  </button>
-                )}
+                <label htmlFor="resume-text" className="block space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Resume text</span>
+                  <textarea
+                    id="resume-text"
+                    value={config.resumeText}
+                    onChange={(event) => updateConfig({ resumeText: event.target.value })}
+                    placeholder="Paste your resume text here. It will be used to tailor interview questions."
+                    rows={9}
+                    maxLength={20000}
+                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
+                  />
+                  <span className="text-xs text-muted-foreground">{config.resumeText.length}/20,000 characters</span>
+                </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Or upload a plain-text resume</span>
+                  <input
+                    type="file"
+                    accept=".txt,text/plain"
+                    aria-label="Upload a plain text resume"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 20000) {
+                        setError("Resume text files must be 20,000 bytes or smaller.");
+                        event.target.value = "";
+                        return;
+                      }
+                      try {
+                        updateConfig({ resumeText: await file.text() });
+                        setError("");
+                      } catch {
+                        setError("Unable to read this resume file. Paste the text instead.");
+                      }
+                    }}
+                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-violet-500/20 file:px-3 file:py-1.5 file:text-violet-100"
+                  />
+                </label>
               </div>
             )}
 
@@ -310,49 +321,28 @@ export default function NewInterviewPage() {
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold text-white">Job Description</h2>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Paste Job Description (Optional)</label>
+                  <label htmlFor="job-description" className="text-sm font-medium text-slate-300">Paste Job Description</label>
                   <textarea
+                    id="job-description"
                     value={config.jdText}
                     onChange={(e) => updateConfig({ jdText: e.target.value })}
-                    placeholder="Paste the job description here to get a personalized interview..."
+                    placeholder="Paste the job description, or provide a job category below."
                     rows={6}
+                    maxLength={20000}
                     className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none"
                   />
                 </div>
 
-                {config.jdText && (
-                  <div className="rounded-lg border border-white/10 bg-white/[0.02] p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-white">Job Fit Analysis</p>
-                      <span className="text-2xl font-bold text-emerald-400">84%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-green-400" style={{ width: "84%" }} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Matched</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["React", "Node.js", "MongoDB"].map((s) => (
-                            <span key={s} className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Missing</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["Docker", "AWS", "Redis"].map((s) => (
-                            <span key={s} className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Job category (used if no description is pasted)</span>
+                  <input
+                    value={config.jobCategory}
+                    onChange={(event) => updateConfig({ jobCategory: event.target.value })}
+                    placeholder="e.g. backend engineering"
+                    maxLength={100}
+                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-muted-foreground"
+                  />
+                </label>
               </div>
             )}
 
@@ -365,8 +355,10 @@ export default function NewInterviewPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {PERSONAS.map((p) => (
                       <button
+                        type="button"
+                        aria-pressed={config.persona === p.value}
                         key={p.value}
-                        onClick={() => updateConfig({ persona: p.value as any })}
+                        onClick={() => updateConfig({ persona: p.value })}
                         className={`rounded-lg border p-4 text-left transition-all ${
                           config.persona === p.value
                             ? "border-violet-500/50 bg-violet-500/10"
@@ -380,13 +372,29 @@ export default function NewInterviewPage() {
                   </div>
                 </div>
 
+                <label className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+                  <input
+                    aria-label="Simulated demo"
+                    type="checkbox"
+                    checked={config.isDemo}
+                    onChange={(event) => updateConfig({ isDemo: event.target.checked })}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-amber-200">Simulated demo</span>
+                    <span className="mt-1 block text-xs text-amber-100/70">Uses a deterministic simulated interviewer. This session and its transcript are marked as simulated and are excluded from evaluations.</span>
+                  </span>
+                </label>
+
                 <div className="space-y-3">
                   <label className="text-sm font-medium text-slate-300">Difficulty</label>
                   <div className="grid grid-cols-3 gap-3">
                     {DIFFICULTIES.map((d) => (
                       <button
+                        type="button"
+                        aria-pressed={config.difficulty === d.value}
                         key={d.value}
-                        onClick={() => updateConfig({ difficulty: d.value as any })}
+                        onClick={() => updateConfig({ difficulty: d.value })}
                         className={`rounded-lg border p-3 text-center transition-all ${
                           config.difficulty === d.value
                             ? "border-violet-500/50 bg-violet-500/10"
@@ -399,28 +407,13 @@ export default function NewInterviewPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] p-4">
-                  <div>
-                    <p className="text-sm font-medium text-white">Pressure Mode</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">AI interrupts and challenges your answers</p>
-                  </div>
-                  <button
-                    onClick={() => updateConfig({ pressureMode: !config.pressureMode })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      config.pressureMode ? "bg-violet-600" : "bg-white/10"
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-                      config.pressureMode ? "translate-x-6" : "translate-x-1"
-                    }`} />
-                  </button>
-                </div>
-
                 <div className="space-y-3">
                   <label className="text-sm font-medium text-slate-300">Duration</label>
                   <div className="grid grid-cols-3 gap-3">
                     {DURATIONS.map((d) => (
                       <button
+                        type="button"
+                        aria-pressed={config.duration === d.value}
                         key={d.value}
                         onClick={() => updateConfig({ duration: d.value })}
                         className={`rounded-lg border p-3 text-center transition-all ${
@@ -447,14 +440,16 @@ export default function NewInterviewPage() {
                   <ReviewRow label="Type" value={config.interviewType?.replace("_", " ") || ""} />
                   <ReviewRow label="Persona" value={PERSONAS.find(p => p.value === config.persona)?.label || ""} />
                   <ReviewRow label="Difficulty" value={config.difficulty} />
-                  <ReviewRow label="Pressure Mode" value={config.pressureMode ? "Enabled" : "Disabled"} />
                   <ReviewRow label="Duration" value={`${config.duration} min`} />
-                  <ReviewRow label="Resume" value={config.resumeFilename || "Uploaded"} />
+                  <ReviewRow label="Resume" value={`${config.resumeText.length} characters provided`} />
+                  <ReviewRow label="Job context" value={config.jdText.trim() ? "Job description provided" : config.jobCategory} />
+                  <ReviewRow label="Session type" value={config.isDemo ? "Simulated demo" : "Real interview"} />
                 </div>
               </div>
             )}
 
             {/* Navigation Buttons */}
+            {error && <p role="alert" className="mt-4 text-sm text-rose-400">{error}</p>}
             <div className="mt-8 flex items-center justify-between pt-6 border-t border-white/10">
               <button
                 onClick={handleBack}

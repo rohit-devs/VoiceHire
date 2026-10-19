@@ -5,26 +5,29 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { interviewService } from "@/lib/services";
 import { Search, ChevronRight, Clock, Star } from "lucide-react";
+import type { InterviewConfig } from "@/types";
 
 export default function InterviewsPage() {
-  const [interviews, setInterviews] = useState<any[]>([]);
+  const [interviews, setInterviews] = useState<InterviewConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    interviewService.getHistory().then(setInterviews);
-    setLoading(false);
+    let active = true;
+    void interviewService.getHistory().then((items) => {
+      if (active) setInterviews(items);
+    }).catch((cause: unknown) => {
+      if (active) setError(cause instanceof Error ? cause.message : "Unable to load interviews.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
   }, []);
 
   const filtered = interviews.filter((i) =>
     i.role.toLowerCase().includes(search.toLowerCase())
   );
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-emerald-400";
-    if (score >= 60) return "text-amber-400";
-    return "text-rose-400";
-  };
 
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
@@ -50,7 +53,7 @@ export default function InterviewsPage() {
   return (
     <AppShell>
       <div className="min-h-screen bg-[#0a0a0f]">
-        <div className="mx-auto max-w-5xl px-8 py-10">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-10">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-white">Interview History</h1>
             <p className="text-sm text-muted-foreground mt-1">View and manage your past interviews</p>
@@ -62,6 +65,7 @@ export default function InterviewsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
+                aria-label="Search interviews by role"
                 placeholder="Search interviews..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -70,12 +74,23 @@ export default function InterviewsPage() {
             </div>
           </div>
 
+          {error ? (
+            <div>
+              <p role="alert" className="text-sm text-rose-300">{error}</p>
+              <button onClick={() => window.location.reload()} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Retry</button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <p role="status" className="rounded-xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
+              {interviews.length === 0 ? "You have no saved interviews yet." : "No interviews match your search."}
+            </p>
+          ) : null}
+
           {/* Interviews List */}
           <div className="space-y-2">
             {filtered.map((interview) => (
               <Link
                 key={interview.id}
-                href={`/reports/${interview.id}`}
+                href={interview.currentState === "completed" ? `/reports/${interview.id}` : `/interview/live/${interview.id}`}
                 className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.04] group"
               >
                 <div className="flex items-center gap-4">
@@ -90,6 +105,8 @@ export default function InterviewsPage() {
                       <span className={`text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full border ${getTypeColor(interview.interviewType)}`}>
                         {interview.interviewType.replace("_", " ")}
                       </span>
+                      {interview.isDemo && <span className="text-[10px] text-amber-200">Simulated demo</span>}
+                      <span className="text-xs text-muted-foreground">{interview.currentState ?? "Status unavailable"}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {interview.duration}m
@@ -99,8 +116,7 @@ export default function InterviewsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <p className={`text-lg font-bold ${getScoreColor(82)}`}>82</p>
-                    <p className="text-[10px] text-muted-foreground">/100</p>
+                    <p className="text-xs text-muted-foreground">Score shown in saved report</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                 </div>

@@ -5,18 +5,21 @@ In demo mode (local development only), a demo user is returned without a valid t
 In production, a valid Bearer token is required on every protected endpoint
 and WebSocket connection.
 """
+
 import logging
 import time
 from typing import Optional
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, jwk, JWTError
+import jwt
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db, async_session
+from app.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -57,23 +60,26 @@ async def _verify_clerk_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Clerk JWKS URL not configured")
     jwks = await _get_jwks()
 
-    unverified = jwt.get_unverified_header(token)
+    try:
+        unverified = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
     kid = unverified.get("kid")
     key_data = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
     if not key_data:
         raise HTTPException(status_code=401, detail="Invalid token: key not found")
 
-    public_key = jwk.construct(key_data)
     try:
+        public_key = jwt.PyJWK.from_dict(key_data).key
         payload = jwt.decode(
             token,
             public_key,
             algorithms=["RS256"],
             issuer=settings.CLERK_JWT_JWKS_URL.replace("/.well-known/jwks.json", ""),
-            audience=None,
+            options={"verify_aud": False},
         )
-    except JWTError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
     return {
         "id": payload.get("sub", "unknown"),
@@ -95,33 +101,31 @@ async def _upsert_user(user_info: dict, db: Optional[AsyncSession] = None) -> di
         db = async_session()
         own_session = True
     try:
-        await db.execute(
-            text(
-                """INSERT INTO users (id, email, clerk_id, first_name, last_name, avatar_url)
-                   VALUES (:id, :email, :clerk_id, :first_name, :last_name, :avatar_url)
-                   ON CONFLICT(clerk_id) DO UPDATE SET
-                     email = EXCLUDED.email,
-                     first_name = EXCLUDED.first_name,
-                     last_name = EXCLUDED.last_name,
-                     avatar_url = EXCLUDED.avatar_url"""
-            ),
-            {
-                "id": user_info["id"],
-                "email": user_info["email"],
-                "clerk_id": user_info["clerk_id"],
-                "first_name": user_info.get("first_name"),
-                "last_name": user_info.get("last_name"),
-                "avatar_url": user_info.get("avatar_url"),
-            }
-        )
+        user = await db.scalar(select(User).where(User.clerk_id == user_info["clerk_id"]))
+        if user is None:
+            user = User(
+                id=user_info["id"],
+                email=user_info["email"],
+                clerk_id=user_info["clerk_id"],
+                first_name=user_info.get("first_name"),
+                last_name=user_info.get("last_name"),
+                avatar_url=user_info.get("avatar_url"),
+            )
+            db.add(user)
+        else:
+            user.email = user_info["email"]
+            user.first_name = user_info.get("first_name")
+            user.last_name = user_info.get("last_name")
+            user.avatar_url = user_info.get("avatar_url")
         await db.commit()
         return user_info
-    except Exception as exc:
-        if not own_session:
-            await db.rollback()
-        logger.warning(f"Failed to upsert user {user_info['id']}: {exc}")
-        # Return the info even if DB upsert failed — caller can still proceed
-        return user_info
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("Failed to upsert user %s", user_info["id"])
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User persistence unavailable",
+        ) from exc
     finally:
         if own_session:
             await db.close()
@@ -129,7 +133,7 @@ async def _upsert_user(user_info: dict, db: Optional[AsyncSession] = None) -> di
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     FastAPI dependency that returns the authenticated user as a dict.
@@ -167,7 +171,7 @@ async def get_current_user(
 
 async def get_current_user_id(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> str:
     """Returns just the user ID string for use in DB queries."""
     user = await get_current_user(credentials, db)

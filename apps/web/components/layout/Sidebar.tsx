@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useUserStore } from "@/stores/userStore";
+import { interviewService } from "@/lib/services";
 import {
   LayoutDashboard,
   Mic,
@@ -14,9 +14,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Crown,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -31,12 +30,28 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const user = useUserStore((s) => s.user);
+  const [profile, setProfile] = useState<{ name: string; email: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void interviewService.getProfile().then((data) => {
+      if (active) {
+        setProfile({
+          name: [data.first_name, data.last_name].filter(Boolean).join(" ") || "Complete your profile",
+          email: data.email,
+        });
+      }
+    }).catch(() => {
+      if (active) setProfile(null);
+    });
+    return () => { active = false; };
+  }, []);
 
   return (
+    <>
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r border-white/[0.08] bg-[#0a0a0f] transition-all duration-300",
+        "fixed left-0 top-0 z-40 hidden h-screen border-r border-white/[0.08] bg-[#0a0a0f] transition-all duration-300 sm:block",
         collapsed ? "w-[72px]" : "w-[200px]"
       )}
     >
@@ -92,30 +107,40 @@ export function Sidebar() {
         <div className="p-3 border-t border-white/[0.08]">
           <div className={cn("flex items-center gap-2.5 rounded-lg p-2 bg-white/[0.02] border border-white/[0.06]", collapsed && "justify-center")}>
             <div className="relative flex-shrink-0">
-              <img
-                src={user.avatar}
-                alt={user.name}
-                className="h-8 w-8 rounded-full bg-slate-800"
-              />
+              <div aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/20 text-xs font-semibold text-violet-100">
+                {profile?.name?.slice(0, 1).toUpperCase() ?? "?"}
+              </div>
               <div className="absolute -bottom-0.5 -right-0.5 rounded-full bg-gradient-to-r from-violet-500 to-blue-600 p-[1.5px]">
                 <div className="h-2 w-2 rounded-full bg-[#0a0a0f]" />
               </div>
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-foreground truncate">{user.name}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                <p className="text-[13px] font-medium text-foreground truncate">{profile?.name ?? "Profile unavailable"}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{profile?.email ?? "Account data unavailable"}</p>
               </div>
-            )}
-            {!collapsed && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-300 border border-violet-500/20">
-                <Crown className="h-2.5 w-2.5" />
-                {user.plan}
-              </span>
             )}
           </div>
         </div>
       </div>
     </aside>
+    <nav aria-label="Primary navigation" className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-white/10 bg-[#0a0a0f] px-1 py-2 sm:hidden">
+      {navItems.map((item) => {
+        const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+            className={cn("flex min-w-0 flex-col items-center gap-1 rounded px-2 py-1 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300", active ? "text-violet-200" : "text-slate-300")}
+          >
+            <item.icon aria-hidden="true" className="h-4 w-4" />
+            <span className="max-w-14 truncate">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+    </>
   );
 }

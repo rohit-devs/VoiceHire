@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import ClerkTokenSync from "@/components/ClerkTokenSync";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import { getAuthMode } from "@/lib/auth-mode";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,12 +15,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const authMode = getAuthMode();
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        {publishableKey ? (
+        <DemoModeBanner />
+        {authMode === "clerk" && publishableKey ? (
           <ClerkProvider publishableKey={publishableKey}>
             <ClerkTokenSync />
             {children}

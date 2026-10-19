@@ -7,7 +7,6 @@ export interface UserProfile {
   overallReadiness: number;
   technicalKnowledge: number;
   communication: number;
-  confidence: number;
   clarity: number;
   answerRelevance: number;
 }
@@ -47,8 +46,12 @@ export interface InterviewConfig {
   interviewerType?: string;
   resume?: Resume;
   jobDescription?: JobDescription;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+  agoraChannel?: string;
+  isDemo?: boolean;
   createdAt: string;
+  status?: string;
+  currentState?: string;
 }
 
 export interface InterviewQuestion {
@@ -69,51 +72,6 @@ export interface TranscriptMessage {
   speaker: "candidate" | "interviewer";
   text: string;
   timestamp: number;
-  metrics?: {
-    wpm: number;
-    pauseMs: number;
-    fillerWords: string[];
-  };
-}
-
-export interface InterviewMetrics {
-  clarity: number;
-  confidence: number;
-  relevance: number;
-  fillerWordsCount: number;
-  avgWpm: number;
-  longPauses: number;
-  avgResponseTime: number;
-  answerStructure: number;
-}
-
-export interface InterviewReport {
-  id: string;
-  interviewId: string;
-  overallScore: number;
-  technicalScore: number;
-  communicationScore: number;
-  confidenceScore: number;
-  clarityScore: number;
-  problemSolvingScore: number;
-  answerRelevanceScore: number;
-  strengths: string[];
-  improvements: string[];
-  summary: string;
-  communicationFingerprint: CommunicationFingerprint;
-  detailedMetrics: InterviewMetrics;
-  questions: InterviewQuestion[];
-  transcripts: TranscriptMessage[];
-  createdAt: string;
-}
-
-export interface CommunicationFingerprint {
-  clarity: number;
-  conciseness: number;
-  speakingPace: number;
-  confidence: number;
-  fillerControl: number;
-  answerStructure: number;
 }
 
 export interface CoachingPlanDay {
@@ -149,13 +107,9 @@ export interface PracticeSession {
 export interface PerformanceHistory {
   date: string;
   overallScore: number;
-  technical: number;
-  communication: number;
-  confidence: number;
-  clarity: number;
-  conciseness: number;
-  fillerWords: number;
-  speakingPace: number;
+  sessionId: string;
+  role: string;
+  categoryScores: Record<string, number>;
 }
 
 export interface InterviewBlueprint {
@@ -172,38 +126,17 @@ export interface InterviewBlueprint {
   message: string;
 }
 
-export interface EvaluationReport {
-  sessionId: string;
-  overallScore: number;
-  technicalScore: number;
-  communicationScore: number;
-  confidenceScore: number;
-  clarityScore: number;
-  relevanceScore: number;
-  problemSolvingScore: number;
-  communicationFingerprint: {
-    clarity: number;
-    conciseness: number;
-    structure: number;
-    pace: number;
-    fillerControl: number;
-  };
-  topWeakness: string;
-  topStrength: string;
-  recommendation: string;
-}
-
 export interface DashboardData {
   greeting: string;
   subtitle: string;
-  overallReadiness: number;
-  technicalKnowledge: number;
-  communication: number;
-  confidence: number;
-  clarity: number;
-  answerRelevance: number;
+  overallReadiness: number | null;
+  technicalKnowledge: number | null;
+  communication: number | null;
+  clarity: number | null;
+  answerRelevance: number | null;
   recentInterviews: InterviewConfig[];
   performanceHistory: PerformanceHistory[];
+  strengths: string[];
   insights: string[];
   recommendations: string[];
 }

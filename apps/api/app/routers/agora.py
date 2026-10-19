@@ -1,19 +1,24 @@
-"""
-Agora token + channel routes. Works with real Agora credentials OR demo tokens.
-"""
+"""Agora RTC credentials scoped to owned interview sessions."""
+
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agora.tokens import AgoraChannelConfig, generate_agora_token
+from app.auth import get_current_user
 from app.config import settings
-from app.auth import require_clerk_jwt
+from app.database import get_db
+from app.interview.orchestrator import SessionState
+from app.models import InterviewSession
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Agora"])
 
 
 class TokenRequest(BaseModel):
-    channel_name: str
-    uid: int
-    role: str = "publisher"  # publisher | subscriber
+    session_id: str
 
 
 class TokenResponse(BaseModel):
@@ -25,49 +30,52 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/token", response_model=TokenResponse)
-async def create_token(req: TokenRequest, user=Depends(require_clerk_jwt)):
-    # Validate inputs
-    if req.uid <= 0:
-        raise HTTPException(status_code=400, detail="uid must be positive")
-    if req.role not in ("publisher", "subscriber"):
-        raise HTTPException(status_code=400, detail="role must be publisher or subscriber")
+async def create_token(
+    request: TokenRequest,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    session = await db.get(InterviewSession, request.session_id)
+    if session is None or session.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    interviewable_states = {
+        SessionState.READY.value,
+        SessionState.CONNECTING.value,
+        SessionState.INTERVIEWING.value,
+        SessionState.PROCESSING_RESPONSE.value,
+    }
+    if session.current_state not in interviewable_states:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Agora token unavailable while session is {session.current_state}",
+        )
+    if not settings.agora_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Agora RTC credentials are unavailable; continue with text input.",
+        )
 
-    # ── Real Agora token ──
-    if settings.agora_enabled:
-        try:
-            from app.agora.tokens import generate_agora_token
-            token = generate_agora_token(req.channel_name, req.uid, req.role)
-            return TokenResponse(
-                token=token,
-                channel_name=req.channel_name,
-                uid=req.uid,
-                app_id=settings.AGORA_APP_ID,
-                expires_in_seconds=settings.AGORA_TOKEN_EXPIRATION,
-            )
-        except Exception as exc:
-            # Don't crash — fall through to demo token
-            print(f"[Agora] Real token failed ({exc}), using demo token")
+    expires_in = max(1, min(3600, settings.AGORA_TOKEN_EXPIRATION))
+    channel_name = session.agora_channel
+    uid = AgoraChannelConfig.CANDIDATE_UID
+    try:
+        token = generate_agora_token(
+            channel_name=channel_name,
+            uid=uid,
+            role="publisher",
+            expire_seconds=expires_in,
+        )
+    except (ValueError, TypeError) as exc:
+        logger.warning("Agora token configuration rejected for session_id=%s", session.id)
+        raise HTTPException(status_code=503, detail="Agora RTC token could not be generated") from exc
+    except Exception as exc:
+        logger.exception("Agora token generation failed for session_id=%s", session.id)
+        raise HTTPException(status_code=503, detail="Agora RTC token could not be generated") from exc
 
-    # ── Demo token (frontend can still join a dummy channel for UI testing) ──
-    import secrets
-    demo_token = f"demo-{secrets.token_urlsafe(32)}"
     return TokenResponse(
-        token=demo_token,
-        channel_name=req.channel_name,
-        uid=req.uid,
-        app_id=settings.AGORA_APP_ID or "demo-app-id",
-        expires_in_seconds=3600,
+        token=token,
+        channel_name=channel_name,
+        uid=uid,
+        app_id=settings.AGORA_APP_ID,
+        expires_in_seconds=expires_in,
     )
-
-
-from app.auth import require_clerk_jwt, get_current_user as _user_guard
-
-
-@router.post("/channel/join")
-async def channel_join(data: dict, user: dict = Depends(_user_guard)):
-    return {"status": "joined", "channel": data.get("channel_name"), "mode": "demo" if not settings.agora_enabled else "live"}
-
-
-@router.post("/channel/leave")
-async def channel_leave(data: dict, user: dict = Depends(_user_guard)):
-    return {"status": "left", "channel": data.get("channel_name")}

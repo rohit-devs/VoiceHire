@@ -1,56 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface TranscriptMessage {
   type: "transcript";
+  message_id: string;
+  sequence_number: number;
   speaker: "candidate" | "interviewer";
   text: string;
   timestamp_ms: number;
-  metrics?: {
-    wpm: number;
-    pause_ms: number;
-    filler_words: string[];
-  };
+  duration_ms: number | null;
+  language: "en" | "es" | "fr";
+  is_final: true;
+  source: "real" | "simulated";
 }
 
-export interface MetricsMessage {
-  type: "metrics";
-  clarity_score: number;
-  confidence_score: number;
-  relevance_score: number;
-  filler_words_count: number;
-  avg_wpm: number;
+export interface VoiceMetricsMessage {
+  type: "voice_metrics";
   timestamp_ms: number;
+  source: "real" | "simulated";
+  metrics: Record<string, unknown>;
 }
 
 export interface StateChangeMessage {
   type: "state_change";
-  state: "intro" | "warmup" | "technical" | "behavioral" | "pressure" | "closing";
-  metadata?: Record<string, any>;
-}
-
-export interface AIThinkingMessage {
-  type: "ai_thinking";
-  text: string;
-}
-
-export interface EvaluationCompleteMessage {
-  type: "evaluation_complete";
-  report: Record<string, any>;
+  state: string;
+  metadata?: Record<string, unknown>;
 }
 
 export type WebSocketMessage =
   | TranscriptMessage
-  | MetricsMessage
-  | StateChangeMessage
-  | AIThinkingMessage
-  | EvaluationCompleteMessage;
+  | VoiceMetricsMessage
+  | StateChangeMessage;
 
 interface UseInterviewWebSocketOptions {
   sessionId: string;
   apiUrl?: string;
   autoConnect?: boolean;
+  authToken?: string | null;
 }
 
 interface UseInterviewWebSocketReturn {
@@ -58,149 +45,124 @@ interface UseInterviewWebSocketReturn {
   isConnecting: boolean;
   error: string | null;
   transcripts: TranscriptMessage[];
-  metrics: MetricsMessage | null;
+  metrics: VoiceMetricsMessage | null;
   currentState: string;
-  aiThinking: boolean;
   send: (message: string) => void;
   connect: () => void;
   disconnect: () => void;
 }
 
-/**
- * Hook for managing WebSocket connection to interview session.
- *
- * Usage:
- * ```tsx
- * const {
- *   isConnected,
- *   transcripts,
- *   metrics,
- *   currentState,
- *   aiThinking,
- * } = useInterviewWebSocket({
- *   sessionId: "session-123",
- *   autoConnect: true,
- * });
- * ```
- */
-export const useInterviewWebSocket = ({
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+export function useInterviewWebSocket({
   sessionId,
-  apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  apiUrl,
   autoConnect = true,
-}: UseInterviewWebSocketOptions): UseInterviewWebSocketReturn => {
+  authToken = null,
+}: UseInterviewWebSocketOptions): UseInterviewWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSequenceRef = useRef(0);
+  const attemptsRef = useRef(0);
+  const explicitlyDisconnectedRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
-  const [metrics, setMetrics] = useState<MetricsMessage | null>(null);
-  const [currentState, setCurrentState] = useState("intro");
-  const [aiThinking, setAiThinking] = useState(false);
+  const [metrics, setMetrics] = useState<VoiceMetricsMessage | null>(null);
+  const [currentState, setCurrentState] = useState("created");
 
   const connect = useCallback(() => {
-    if (isConnected || isConnecting) return;
-
+    const current = wsRef.current;
+    if (current?.readyState === WebSocket.OPEN || current?.readyState === WebSocket.CONNECTING) return;
+    explicitlyDisconnectedRef.current = false;
     setIsConnecting(true);
     setError(null);
 
-    const protocol = apiUrl.startsWith("https") ? "wss" : "ws";
-    const baseUrl = apiUrl.replace(/^https?:\/\//, "");
-    const wsUrl = `${protocol}://${baseUrl}/api/interviews/sessions/${sessionId}/ws`;
+    const pageUrl = new URL(window.location.href);
+    const targetUrl = apiUrl ? new URL(apiUrl, pageUrl) : pageUrl;
+    const url = new URL(
+      `/api/interviews/sessions/${encodeURIComponent(sessionId)}/ws`,
+      targetUrl.origin,
+    );
+    url.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
+    url.searchParams.set("after_sequence", String(lastSequenceRef.current));
+    if (authToken) url.searchParams.set("token", authToken);
 
-    console.log(`🔗 Connecting to WebSocket: ${wsUrl}`);
-
-    try {
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        console.log("✅ WebSocket connected");
-        setIsConnected(true);
-        setIsConnecting(false);
-        setError(null);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data) as WebSocketMessage;
-          console.log("📩 Received message:", message);
-
-          switch (message.type) {
-            case "transcript":
-              setTranscripts((prev) => [...prev, message]);
-              break;
-
-            case "metrics":
-              setMetrics(message);
-              break;
-
-            case "state_change":
-              setCurrentState(message.state);
-              break;
-
-            case "ai_thinking":
-              setAiThinking(true);
-              setTimeout(() => setAiThinking(false), 1000);
-              break;
-
-            case "evaluation_complete":
-              console.log("📊 Evaluation complete:", message.report);
-              break;
-
-            default:
-              console.warn("Unknown message type:", message);
-          }
-        } catch (err) {
-          console.error("Failed to parse WebSocket message:", err);
-        }
-      };
-
-      ws.onerror = (event) => {
-        console.error("❌ WebSocket error:", event);
-        setError("Connection error. Please refresh and try again.");
-        setIsConnecting(false);
-      };
-
-      ws.onclose = () => {
-        console.log("🔌 WebSocket closed");
-        setIsConnected(false);
-        setIsConnecting(false);
-        wsRef.current = null;
-      };
-
-      wsRef.current = ws;
-    } catch (err) {
-      console.error("Failed to create WebSocket:", err);
-      setError(String(err));
+    const socket = new WebSocket(url.toString());
+    wsRef.current = socket;
+    socket.onopen = () => {
+      attemptsRef.current = 0;
+      setIsConnected(true);
       setIsConnecting(false);
-    }
-  }, [sessionId, apiUrl, isConnected, isConnecting]);
+      setError(null);
+    };
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as WebSocketMessage;
+        if (message.type === "transcript") {
+          lastSequenceRef.current = Math.max(
+            lastSequenceRef.current,
+            message.sequence_number,
+          );
+          setTranscripts((previous) => {
+            if (previous.some((entry) => entry.message_id === message.message_id)) return previous;
+            return [...previous, message].sort(
+              (left, right) => left.sequence_number - right.sequence_number,
+            );
+          });
+        } else if (message.type === "voice_metrics") {
+          setMetrics(message);
+        } else if (message.type === "state_change") {
+          setCurrentState(message.state);
+        }
+      } catch {
+        setError("Received an invalid interview event.");
+      }
+    };
+    socket.onerror = () => {
+      setError("Interview event connection failed.");
+    };
+    socket.onclose = () => {
+      if (wsRef.current === socket) wsRef.current = null;
+      setIsConnected(false);
+      setIsConnecting(false);
+      if (
+        explicitlyDisconnectedRef.current ||
+        attemptsRef.current >= MAX_RECONNECT_ATTEMPTS
+      ) return;
+      const delayMs = Math.min(1000 * 2 ** attemptsRef.current, 10_000);
+      attemptsRef.current += 1;
+      reconnectTimerRef.current = setTimeout(connect, delayMs);
+    };
+  }, [apiUrl, authToken, sessionId]);
 
   const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      setIsConnected(false);
+    explicitlyDisconnectedRef.current = true;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
+    const current = wsRef.current;
+    wsRef.current = null;
+    if (current) current.close();
+    setIsConnected(false);
+    setIsConnecting(false);
   }, []);
 
   const send = useCallback((message: string) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(message);
-    } else {
-      console.warn("WebSocket not connected");
-    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(message);
   }, []);
 
-  // Auto-connect on mount
   useEffect(() => {
-    if (autoConnect) {
-      connect();
-    }
-
-    return () => {
-      disconnect();
-    };
-  }, [autoConnect, connect, disconnect, sessionId]);
+    lastSequenceRef.current = 0;
+    attemptsRef.current = 0;
+    setTranscripts([]);
+    setMetrics(null);
+    setCurrentState("created");
+    if (autoConnect) connect();
+    return disconnect;
+  }, [autoConnect, authToken, connect, disconnect, sessionId]);
 
   return {
     isConnected,
@@ -209,11 +171,10 @@ export const useInterviewWebSocket = ({
     transcripts,
     metrics,
     currentState,
-    aiThinking,
     send,
     connect,
     disconnect,
   };
-};
+}
 
 export default useInterviewWebSocket;

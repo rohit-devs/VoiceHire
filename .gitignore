@@ -15,8 +15,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -43,6 +43,7 @@ env/
 
 # Next.js
 .next/
+/apps/web/.next-playwright/
 out/
 .vercel/
 
@@ -73,6 +74,8 @@ coverage/
 .pytest_cache/
 .coverage
 *.tsbuildinfo
+/apps/web/test-results/
+.playwright-mcp/
 
 # Database
 *.db
@@ -98,3 +101,7 @@ yarn.lock
 
 # Prisma
 prisma/migrations/
+
+apps/web/test-results/
+.playwright-mcp/
+apps/web/.next-playwright/

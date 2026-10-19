@@ -15,6 +15,10 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 
+class ResponseAnalysisUnavailable(RuntimeError):
+    """Raised when a real response analysis cannot be produced."""
+
+
 class ResponseAnalysis(BaseModel):
     """
     Structured response analysis result.
@@ -23,7 +27,6 @@ class ResponseAnalysis(BaseModel):
     technical_score: int = Field(..., ge=0, le=100, description="Technical accuracy (0-100)")
     relevance_score: int = Field(..., ge=0, le=100, description="Answer relevance (0-100)")
     clarity_score: int = Field(..., ge=0, le=100, description="Communication clarity, structure, and conciseness (0-100)")
-    confidence_score: int = Field(..., ge=0, le=100, description="Confidence level (0-100)")
     filler_words_detected: list[str] = Field(default_factory=list, description="Filler words found")
     recommended_action: str = Field(
         ...,
@@ -37,12 +40,6 @@ class ResponseAnalysis(BaseModel):
     state_transition: Optional[str] = Field(
         default=None,
         description="Target state: technical|behavioral|pressure|closing|null"
-    )
-    confidence_in_scores: int = Field(
-        ...,
-        ge=0,
-        le=100,
-        description="Confidence in the analysis (0-100)"
     )
     star_analysis: Optional[dict] = Field(
         default=None,
@@ -222,7 +219,6 @@ Scoring Guidelines:
  - technical_score: Accuracy, depth, and relevance of technical knowledge (0-100)
  - relevance_score: How well the answer addresses the question (0-100)
  - clarity_score: Communication clarity, structure, and conciseness (0-100)
- - confidence_score: Apparent confidence, hesitation, uncertainty (0-100)
 
 Recommended actions:
  - CHALLENGE: Response was weak, ask a harder follow-up
@@ -245,13 +241,11 @@ Return JSON with this exact structure:
   "technical_score": <0-100>,
   "relevance_score": <0-100>,
   "clarity_score": <0-100>,
-  "confidence_score": <0-100>,
   "filler_words_detected": {json.dumps(filler_words)},
   "recommended_action": "<CHALLENGE|CLARIFY|FOLLOW_UP|DIFFICULTY_UP|DIFFICULTY_DOWN|STATE_TRANSITION>",
   "follow_up_reason": "<why this action is recommended>",
   "difficulty_adjustment": "<DIFFICULTY_UP|DIFFICULTY_DOWN|NONE>",
   "state_transition": "<technical|behavioral|pressure|closing|null>",
-  "confidence_in_scores": <0-100>,
   "star_analysis": {{"situation": <bool>, "task": <bool>, "action": <bool>, "result": <bool>, "missing_components": [<list>], "recommended_follow_up": "<string or null>"}}
 }}"""
             analysis = None
@@ -262,7 +256,7 @@ Return JSON with this exact structure:
                         model=self.model,
                         response_format={"type": "json_object"},
                         temperature=0.3,
-                        max_tokens=500,
+                        max_completion_tokens=500,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_message},
@@ -282,43 +276,21 @@ Return JSON with this exact structure:
             logger.info(
                 f"✅ Analysis complete: T={analysis.technical_score}, "
                 f"R={analysis.relevance_score}, C={analysis.clarity_score}, "
-                f"Co={analysis.confidence_score} | Action: {analysis.recommended_action}"
+                f"Action: {analysis.recommended_action}"
             )
             
             return analysis
 
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Failed to parse OpenAI response: {e}")
-            star_fallback = self._analyze_star(candidate_response) if current_state == "behavioral" else None
-            return ResponseAnalysis(
-                technical_score=50,
-                relevance_score=50,
-                clarity_score=50,
-                confidence_score=50,
-                filler_words_detected=filler_words,
-                recommended_action="CLARIFY",
-                follow_up_reason="Analyzer encountered an error, requesting clarification",
-                difficulty_adjustment="NONE",
-                state_transition=None,
-                confidence_in_scores=10,
-                star_analysis=star_fallback
-            )
+        except json.JSONDecodeError as exc:
+            logger.error("Response analysis returned invalid JSON")
+            raise ResponseAnalysisUnavailable(
+                "Response analysis is unavailable; no scores were generated"
+            ) from exc
         except Exception as e:
-            logger.error(f"❌ Analysis failed: {e}")
-            star_fallback = self._analyze_star(candidate_response) if current_state == "behavioral" else None
-            return ResponseAnalysis(
-                technical_score=50,
-                relevance_score=50,
-                clarity_score=50,
-                confidence_score=50,
-                filler_words_detected=[],
-                recommended_action="CLARIFY",
-                follow_up_reason="Analyzer service unavailable, requesting clarification",
-                difficulty_adjustment="NONE",
-                state_transition=None,
-                confidence_in_scores=0,
-                star_analysis=star_fallback
-            )
+            logger.error("Response analysis failed error_type=%s", type(e).__name__)
+            raise ResponseAnalysisUnavailable(
+                "Response analysis is unavailable; no scores were generated"
+            ) from e
 
     async def analyze_transcript_segment(
         self,

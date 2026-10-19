@@ -1,0 +1,92 @@
+import type {
+  AnchorHTMLAttributes,
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+type ButtonVariant = "primary" | "secondary" | "danger";
+
+const buttonStyles = (variant: ButtonVariant, className?: string) =>
+  cn(
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300 disabled:cursor-not-allowed disabled:opacity-60",
+    variant === "primary" && "bg-primary text-primary-foreground hover:brightness-110",
+    variant === "secondary" && "border border-border bg-card text-card-foreground hover:bg-white/10",
+    variant === "danger" && "border border-rose-400/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20",
+    className,
+  );
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+};
+
+export function Button({
+  className,
+  variant = "primary",
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      className={buttonStyles(variant, className)}
+      {...props}
+    />
+  );
+}
+
+type ButtonLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  href: string;
+  variant?: ButtonVariant;
+};
+
+export function ButtonLink({
+  className,
+  href,
+  variant = "primary",
+  ...props
+}: ButtonLinkProps) {
+  return <Link href={href} className={buttonStyles(variant, className)} {...props} />;
+}
+
+export function Card({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("rounded-xl border border-border bg-card text-card-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export function Input({
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={cn(
+        "w-full rounded-lg border border-input bg-black/20 px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function Textarea({
+  className,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn(
+        "w-full rounded-lg border border-input bg-black/20 px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

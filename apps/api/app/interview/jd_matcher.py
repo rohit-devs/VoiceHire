@@ -58,9 +58,9 @@ class JDMatch(BaseModel):
 
     candidate_id: str
     job_id: str
-    overall_fit_score: float = Field(..., ge=0, le=1, description="Overall match 0-1")
-    experience_match: float = Field(..., ge=0, le=1)  # years_exp alignment
-    skill_coverage: float = Field(..., ge=0, le=1)  # % of required skills present
+    overall_fit_score: Optional[float] = Field(None, ge=0, le=1, description="Overall match 0-1")
+    experience_match: Optional[float] = Field(None, ge=0, le=1)
+    skill_coverage: Optional[float] = Field(None, ge=0, le=1)
 
     # Detailed matches
     required_skills_found: List[SkillMatch]
@@ -119,7 +119,7 @@ class JDMatcher:
         """
 
         if not self.client:
-            logger.warning("⚠️  No OpenAI client configured. Cannot parse JD.")
+            logger.info("No JD extraction provider configured; retaining source text only")
             return JobDescription(
                 job_id="unknown",
                 job_title=job_title or "Unknown",
@@ -159,7 +159,7 @@ Return JSON with:
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 temperature=0.2,
-                max_tokens=1000,
+                max_completion_tokens=1000,
                 response_format={"type": "json_object"},
                 messages=[
                     {
@@ -275,6 +275,21 @@ Return JSON with:
         Returns:
             JDMatch with detailed skill analysis
         """
+
+        if not self.client:
+            return JDMatch(
+                candidate_id="candidate",
+                job_id=job_description.job_id,
+                overall_fit_score=None,
+                experience_match=None,
+                skill_coverage=None,
+                required_skills_found=[],
+                required_skills_missing=[],
+                preferred_skills_found=[],
+                priority_skills_to_verify=[],
+                gap_areas=[],
+                strength_areas=[],
+            )
 
         try:
             # Get embeddings for all skills

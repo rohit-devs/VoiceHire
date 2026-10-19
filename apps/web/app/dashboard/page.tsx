@@ -1,21 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { getDashboardData } from "@/lib/mock/mockDashboardService";
+import { interviewService } from "@/lib/services";
 import type { DashboardData } from "@/types";
 import {
   MetricCard,
   PerformanceChart,
   RecentInterviews,
   AIInsights,
-  CoachingProgress,
 } from "@/components/dashboard";
 import {
   Target,
   MessageSquare,
-  Zap,
   Eye,
   CheckCircle,
   Sparkles,
@@ -25,18 +23,26 @@ import {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    getDashboardData().then((d) => {
-      setData(d);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setData(await interviewService.getDashboardData());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load dashboard data.");
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
+
+  useEffect(() => { void load(); }, [load]);
 
   if (loading) {
     return (
       <AppShell>
-        <div className="p-8">
+        <div className="p-4 sm:p-8">
           <div className="animate-pulse space-y-6">
             <div className="h-8 w-64 rounded-lg bg-white/5" />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -50,15 +56,25 @@ export default function DashboardPage() {
     );
   }
 
+  if (error) {
+    return (
+      <AppShell>
+        <section className="p-6 sm:p-8">
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p role="alert" className="mt-4 text-sm text-rose-300">{error}</p>
+          <button onClick={() => void load()} className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Retry</button>
+        </section>
+      </AppShell>
+    );
+  }
   if (!data) return null;
 
   const metrics = [
-    { label: "Overall Readiness", value: data.overallReadiness, icon: Target, color: "from-violet-500 to-purple-600" },
-    { label: "Technical Knowledge", value: data.technicalKnowledge, icon: Activity, color: "from-blue-500 to-cyan-600" },
+    { label: "Average AI rubric judgment", value: data.overallReadiness, icon: Target, color: "from-violet-500 to-purple-600" },
+    { label: "Technical correctness", value: data.technicalKnowledge, icon: Activity, color: "from-blue-500 to-cyan-600" },
     { label: "Communication", value: data.communication, icon: MessageSquare, color: "from-emerald-500 to-green-600" },
-    { label: "Confidence", value: data.confidence, icon: Zap, color: "from-amber-500 to-orange-600" },
-    { label: "Clarity", value: data.clarity, icon: Eye, color: "from-pink-500 to-rose-600" },
-    { label: "Answer Relevance", value: data.answerRelevance, icon: CheckCircle, color: "from-indigo-500 to-violet-600" },
+    { label: "Structure & clarity", value: data.clarity, icon: Eye, color: "from-pink-500 to-rose-600" },
+    { label: "Relevance", value: data.answerRelevance, icon: CheckCircle, color: "from-indigo-500 to-violet-600" },
   ];
 
   return (
@@ -66,7 +82,7 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-[#0a0a0f]">
         {/* Header */}
         <header className="border-b border-white/[0.08] bg-[#0a0a0f]/80 backdrop-blur-xl sticky top-0 z-30">
-          <div className="px-8 py-5 flex items-center justify-between">
+          <div className="px-4 py-5 sm:px-8 flex items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold text-white">{data.greeting}</h1>
               <p className="text-xs text-muted-foreground mt-0.5">{data.subtitle}</p>
@@ -81,13 +97,27 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <div className="p-8 space-y-6">
+        <div className="p-4 sm:p-8 space-y-6">
           {/* Metrics Grid */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {metrics.map((metric) => (
-              <MetricCard key={metric.label} {...metric} />
-            ))}
-          </section>
+          {metrics.some((metric) => metric.value !== null) ? (
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {metrics.map((metric) => (
+                metric.value === null ? null : (
+                  <MetricCard
+                    key={metric.label}
+                    label={metric.label}
+                    value={metric.value}
+                    icon={metric.icon}
+                    color={metric.color}
+                  />
+                )
+              ))}
+            </section>
+          ) : (
+            <p role="status" className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6 text-sm text-muted-foreground">
+              No completed real interview evaluations are available yet. Scores are not inferred from incomplete sessions or simulated demos.
+            </p>
+          )}
 
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -99,8 +129,10 @@ export default function DashboardPage() {
 
             {/* Right Column */}
             <div className="space-y-5">
-              <AIInsights insights={data.insights} recommendations={data.recommendations} />
-              <CoachingProgress />
+              <AIInsights insights={data.insights} recommendations={data.recommendations} strengths={data.strengths} />
+              <Link href="/coach" className="block rounded-xl border border-white/10 bg-white/[0.03] p-5 text-sm font-medium text-violet-200 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300">
+                View saved coaching plans
+              </Link>
             </div>
           </div>
         </div>

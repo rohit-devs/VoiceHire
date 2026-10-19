@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Type-check frontend
+        run: pnpm --filter @voicehire/web type-check
+      - name: Lint frontend
+        run: pnpm --filter @voicehire/web lint
+      - name: Build frontend
+        run: pnpm --filter @voicehire/web build
+
+  verify-api:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install API and test dependencies
+        run: python -m pip install -e ".[dev]"
+        working-directory: apps/api
+      - name: Test API
+        run: python -m pytest tests/ -v
+        working-directory: apps/api
+
+  verify-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install API and test dependencies
+        run: python -m pip install -e ".[dev]"
+        working-directory: apps/api
+      - name: Install Playwright Chromium
+        run: pnpm --filter @voicehire/web exec playwright install --with-deps chromium
+      - name: Run browser demo-flow tests
+        run: pnpm --filter @voicehire/web test:e2e
