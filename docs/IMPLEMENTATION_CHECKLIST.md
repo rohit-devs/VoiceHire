@@ -387,3 +387,18 @@ The checked-in `.github/workflows/ci.yml` runs:
 | Secure-context source inspection | Prepare/live warnings and text-answer fallback confirmed; Playwright covers insecure live flow. |
 | Setup-guide source inspection | Firewall, allowed dev origins, HTTPS dev cert and tunnel instructions present. |
 | `pnpm --filter @voicehire/web type-check` after each documentation/config edit | Exit 0 after each edit. |
+
+## Frontend and E2E CI Node compatibility (2026-10-19)
+
+- `verify-frontend` and `verify-e2e` both failed during `pnpm/action-setup`'s pnpm store lookup, before dependency installation or test commands. The workflow installed Node 20.20.2 while pinning pnpm 11.24.0, which requires Node 22.13 or later and then failed loading the unsupported `node:sqlite` built-in.
+- Updated both affected workflow jobs to install Node 24. The Python API matrix jobs were not changed; the reported 3.11 and 3.12 jobs had passed.
+
+### Verification
+
+| Command / check | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` (Node 24, pnpm 11.24.0) | Exit 0; all 4 workspace projects already up to date. |
+| `pnpm --filter @voicehire/web type-check` | Exit 0. |
+| `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next prints the existing `next lint` deprecation notice. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 Playwright tests passed. |
