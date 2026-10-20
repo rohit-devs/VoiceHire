@@ -5,6 +5,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import engine
+from app.providers import provider_health
 
 router = APIRouter()
 
@@ -33,6 +34,7 @@ async def health_check():
     return {
         "status": "ready",
         "service": "voicehire-api",
+        "providers": provider_health(),
         "dependencies": {
             "database": {"status": "ok"},
             "redis": {"status": "disabled", "reason": "Redis is not used by the API."},

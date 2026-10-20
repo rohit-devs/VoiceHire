@@ -1,103 +1,121 @@
-"""Speech-to-text providers.
+"""Streaming speech-to-text providers."""
 
-Baseline: Deepgram prerecorded REST, one request per spoken answer. This is simpler and
-more robust than a streaming bridge and is enough for turn-based interviews. Add a
-streaming WebSocket bridge later if live interim captions are needed.
-
-Env vars:
-  STT_PROVIDER      auto | deepgram | browser | demo   (default: auto)
-  DEEPGRAM_API_KEY  key from console.deepgram.com
-  DEEPGRAM_MODEL    default nova-3 (override via env if unavailable)
-
-`browser` means the frontend uses the Web Speech API and the backend does no STT.
-"""
 from __future__ import annotations
 
-import os
-from typing import Optional
+import asyncio
+import json
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Protocol
+from urllib.parse import urlencode
 
-import httpx
+import websockets
 
-from .llm import ProviderError, env_flag
+logger = logging.getLogger(__name__)
 
-DEEPGRAM_URL = "https://api.deepgram.com/v1/listen"
-DEFAULT_MODEL = "nova-3"
+
+class STTUnavailable(RuntimeError):
+    """Raised when the configured speech-to-text provider cannot transcribe audio."""
+
+
+@dataclass(frozen=True)
+class STTTranscript:
+    text: str
+    is_final: bool
+    speech_final: bool
+
+
+class STTProvider(Protocol):
+    async def transcribe(
+        self,
+        audio_chunks: AsyncIterator[bytes],
+        on_transcript: Callable[[STTTranscript], Awaitable[None]],
+    ) -> None: ...
+
+
+class _DeepgramConnection(Protocol):
+    async def send(self, message: bytes | str) -> None: ...
+
+    def __aiter__(self) -> AsyncIterator[str | bytes]: ...
 
 
 class DeepgramProvider:
-    name = "deepgram"
-    simulated = False
+    """Bridge streamed browser audio to Deepgram's Nova live transcription API."""
 
-    def __init__(
-        self,
-        api_key: str,
-        *,
-        model: Optional[str] = None,
-        timeout: float = 30.0,
-        transport: Optional[httpx.AsyncBaseTransport] = None,
-    ) -> None:
+    def __init__(self, api_key: str, model: str = "nova-3") -> None:
         self.api_key = api_key
-        self.model = model or DEFAULT_MODEL
-        self.timeout = timeout
-        self._transport = transport
+        self.model = model
 
-    async def transcribe(self, audio: bytes, content_type: str = "audio/webm") -> str:
-        if not audio:
-            return ""
-        params = {"model": self.model, "smart_format": "true", "language": "en"}
-        headers = {
-            "Authorization": f"Token {self.api_key}",
-            "Content-Type": content_type,
-        }
+    @property
+    def websocket_url(self) -> str:
+        query = urlencode(
+            {
+                "model": self.model,
+                "language": "en-US",
+                "interim_results": "true",
+                "smart_format": "true",
+                "punctuate": "true",
+                "endpointing": "300",
+                "utterance_end_ms": "1000",
+            }
+        )
+        return f"wss://api.deepgram.com/v1/listen?{query}"
+
+    async def transcribe(
+        self,
+        audio_chunks: AsyncIterator[bytes],
+        on_transcript: Callable[[STTTranscript], Awaitable[None]],
+    ) -> None:
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    DEEPGRAM_URL, params=params, headers=headers, content=audio
-                )
-        except httpx.HTTPError as exc:
-            raise ProviderError(f"deepgram network error: {exc}", retryable=True) from exc
+            async with websockets.connect(
+                self.websocket_url,
+                additional_headers={"Authorization": f"Token {self.api_key}"},
+                max_size=2**20,
+            ) as connection:
+                sender = asyncio.create_task(self._send_audio(connection, audio_chunks))
+                try:
+                    async for raw_message in connection:
+                        transcript = self._parse_result(raw_message)
+                        if transcript is not None:
+                            await on_transcript(transcript)
+                finally:
+                    sender.cancel()
+                    try:
+                        await sender
+                    except asyncio.CancelledError:
+                        pass
+        except (OSError, TimeoutError, websockets.WebSocketException) as exc:
+            logger.warning("Deepgram streaming failed error_type=%s", type(exc).__name__)
+            raise STTUnavailable(
+                "Deepgram speech recognition is unavailable. Use browser speech recognition or text input."
+            ) from exc
 
-        if response.status_code != 200:
-            raise ProviderError(
-                f"deepgram error {response.status_code}",
-                status=response.status_code,
-                retryable=response.status_code in {429, 500, 502, 503, 504},
-            )
+    @staticmethod
+    async def _send_audio(
+        connection: _DeepgramConnection, audio_chunks: AsyncIterator[bytes]
+    ) -> None:
+        async for chunk in audio_chunks:
+            if chunk:
+                await connection.send(chunk)
+        await connection.send(json.dumps({"type": "CloseStream"}))
+
+    @staticmethod
+    def _parse_result(raw_message: str | bytes) -> STTTranscript | None:
         try:
-            data = response.json()
-            return data["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
-        except (KeyError, IndexError, ValueError) as exc:
-            raise ProviderError("deepgram returned an unexpected response") from exc
-
-
-class DemoSTT:
-    name = "demo"
-    simulated = True
-
-    async def transcribe(self, audio: bytes, content_type: str = "audio/webm") -> str:
-        return "[Simulated transcript] I led a project and delivered it on time."
-
-
-class BrowserSTT:
-    """Marker provider: the browser's Web Speech API does the recognition."""
-
-    name = "browser"
-    simulated = False
-
-    async def transcribe(self, audio: bytes, content_type: str = "audio/webm") -> str:
-        raise ProviderError("STT runs in the browser; send text instead of audio")
-
-
-def get_stt_provider() -> "DeepgramProvider | DemoSTT | BrowserSTT":
-    choice = os.getenv("STT_PROVIDER", "auto").strip().lower()
-    key = os.getenv("DEEPGRAM_API_KEY", "").strip()
-
-    if choice == "demo" or (choice == "auto" and env_flag("DEMO_MODE")):
-        return DemoSTT()
-    if choice == "browser" or (choice == "auto" and not key):
-        return BrowserSTT()
-    if not key:
-        raise ProviderError("STT_PROVIDER=deepgram but DEEPGRAM_API_KEY is not set")
-    return DeepgramProvider(key, model=os.getenv("DEEPGRAM_MODEL") or None)
+            payload: Any = json.loads(raw_message)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise STTUnavailable("Deepgram returned an invalid transcription event.") from exc
+        if not isinstance(payload, dict) or payload.get("type") != "Results":
+            return None
+        channels = payload.get("channel")
+        alternatives = channels.get("alternatives") if isinstance(channels, dict) else None
+        alternative = alternatives[0] if isinstance(alternatives, list) and alternatives else None
+        text = alternative.get("transcript", "").strip() if isinstance(alternative, dict) else ""
+        if not text:
+            return None
+        return STTTranscript(
+            text=text,
+            is_final=payload.get("is_final") is True,
+            speech_final=payload.get("speech_final") is True,
+        )
