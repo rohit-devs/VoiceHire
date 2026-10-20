@@ -132,7 +132,7 @@ async def test_fake_provider_handles_uncertain_and_short_answers(answer, expecte
 @pytest.mark.asyncio
 async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -227,7 +227,7 @@ async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(mon
 @pytest.mark.asyncio
 async def test_question_budget_closes_without_exceeding_question_count(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
