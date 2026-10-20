@@ -122,10 +122,6 @@ class GroqProvider:
         raise LLMUnavailable("Groq is temporarily unavailable.")
 
 
-class OpenAIProvider(GroqProvider):
-    """Compatibility alias for routes not yet migrated to Groq configuration."""
-
-
 class FakeProvider:
     """Deterministic provider for tests and explicitly flagged demo sessions only."""
 
