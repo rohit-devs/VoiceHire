@@ -10,8 +10,8 @@ import re
 import asyncio
 from typing import Optional
 from pydantic import BaseModel, Field
-from app.config import settings
-from app.interview.llm_provider import GroqProvider
+from app.providers import ProviderError, get_llm_provider
+from app.providers.legacy_adapter import LegacyProviderAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +70,11 @@ class ResponseAnalyzer:
         "literally", "actually", "kind of", "sort of", "i mean"
     ]
 
-    def __init__(self, api_key: str | None = None, model: str | None = None):
+    def __init__(self):
         """
-        Initialize analyzer with the configured Groq provider.
-        
-        Args:
-            api_key: Optional Groq API key override
-            model: Optional model name override
+        Initialize analyzer with the environment-selected provider.
         """
-        self.model = model or settings.GROQ_FAST_MODEL
-        self.provider = GroqProvider(api_key or settings.GROQ_API_KEY, model=self.model)
+        self.provider = LegacyProviderAdapter(get_llm_provider())
 
     def _extract_filler_words(self, transcript: str) -> list[str]:
         """
@@ -275,6 +270,8 @@ Return JSON with this exact structure:
             
             return analysis
 
+        except ProviderError:
+            raise
         except json.JSONDecodeError as exc:
             logger.error("Response analysis returned invalid JSON")
             raise ResponseAnalysisUnavailable(
