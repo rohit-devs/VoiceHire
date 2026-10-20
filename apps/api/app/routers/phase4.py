@@ -12,10 +12,10 @@ from datetime import datetime
 
 from app.database import get_db
 from app.auth import get_current_user
-from app.config import settings
 from app.interview.resume_parser import ResumeParser, ResumeDB
 from app.interview.jd_matcher import JDMatcher
 from app.interview.interview_blueprint import BlueprintBuilder
+from app.providers import ProviderError, get_llm_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,14 +28,18 @@ blueprint_builder: Optional[BlueprintBuilder] = None
 job_descriptions: dict[str, object] = {}
 
 
+def _live_llm_provider():
+    provider = get_llm_provider()
+    if provider.simulated:
+        raise ProviderError("LLM provider is disabled for resume and job-description parsing.")
+    return provider
+
+
 def get_resume_parser() -> ResumeParser:
     """Get or create ResumeParser singleton"""
     global resume_parser
     if resume_parser is None:
-        from app.interview.llm_provider import create_groq_client
-
-        client = create_groq_client() if settings.groq_enabled else None
-        resume_parser = ResumeParser(openai_client=client)
+        resume_parser = ResumeParser(provider=_live_llm_provider())
     return resume_parser
 
 
@@ -51,10 +55,7 @@ def get_jd_matcher() -> JDMatcher:
     """Get or create JDMatcher singleton"""
     global jd_matcher
     if jd_matcher is None:
-        from app.interview.llm_provider import create_groq_client
-
-        client = create_groq_client() if settings.groq_enabled else None
-        jd_matcher = JDMatcher(openai_client=client)
+        jd_matcher = JDMatcher(provider=_live_llm_provider())
     return jd_matcher
 
 
@@ -177,9 +178,14 @@ async def upload_and_parse_resume(
             message=f"✅ Successfully parsed resume. Extracted {len(parsed_resume.technical_skills)} technical skills.",
         )
 
+    except ProviderError as exc:
+        raise HTTPException(
+            status_code=429 if exc.status == 429 else 503,
+            detail={"user_message": exc.user_message},
+        ) from exc
     except Exception as e:
         logger.error(f"❌ Failed to parse resume: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to parse resume: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to parse resume.")
 
 
 @router.post("/jobs/{job_id}/description", response_model=JDUploadResponse)
@@ -228,9 +234,14 @@ async def upload_and_parse_jd(
             message=f"✅ Successfully parsed JD. Extracted {len(job_description.required_skills)} required skills.",
         )
 
+    except ProviderError as exc:
+        raise HTTPException(
+            status_code=429 if exc.status == 429 else 503,
+            detail={"user_message": exc.user_message},
+        ) from exc
     except Exception as e:
         logger.error(f"❌ Failed to parse JD: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to parse JD: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to parse job description.")
 
 
 @router.post("/blueprint/generate", response_model=BlueprintGenerateResponse)
