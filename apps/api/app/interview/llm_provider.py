@@ -35,57 +35,14 @@ class LLMProvider(Protocol):
     ) -> Completion: ...
 
 
-class OpenAIProvider:
-    def __init__(self, api_key: str, model: str | None = None) -> None:
-        self.model = model or settings.OPENAI_MODEL
-        self.client = AsyncOpenAI(api_key=api_key, timeout=15.0, max_retries=0)
-
-    async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
-    ) -> Completion:
-        for attempt, delay in enumerate((0.0, 0.25, 0.75), start=1):
-            if delay:
-                await asyncio.sleep(delay)
-            try:
-                response = await asyncio.wait_for(
-                    self.client.chat.completions.create(
-                        model=self.model,
-                        temperature=0.3,
-                        max_completion_tokens=max_tokens,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content},
-                        ],
-                    ),
-                    timeout=18.0,
-                )
-                usage = response.usage
-                completion = Completion(
-                    text=(response.choices[0].message.content or "").strip(),
-                    prompt_tokens=usage.prompt_tokens if usage else 0,
-                    completion_tokens=usage.completion_tokens if usage else 0,
-                    provider="openai",
-                    model=self.model,
-                )
-                logger.info(
-                    "LLM completion session_id=%s prompt_tokens=%d completion_tokens=%d",
-                    session_id,
-                    completion.prompt_tokens,
-                    completion.completion_tokens,
-                )
-                if completion.text:
-                    return completion
-                raise LLMUnavailable("The language model returned an empty response")
-            except Exception as exc:
-                logger.warning(
-                    "LLM request failed session_id=%s attempt=%d error_type=%s",
-                    session_id,
-                    attempt,
-                    type(exc).__name__,
-                )
-                if attempt == 3:
-                    raise LLMUnavailable("The language model is temporarily unavailable") from exc
-        raise LLMUnavailable("The language model is temporarily unavailable")
+def create_groq_client() -> AsyncOpenAI:
+    """Build the shared OpenAI-compatible client for Groq-backed legacy helpers."""
+    return AsyncOpenAI(
+        api_key=settings.GROQ_API_KEY,
+        base_url=settings.GROQ_BASE_URL,
+        timeout=15.0,
+        max_retries=0,
+    )
 
 
 class GroqProvider:
@@ -163,6 +120,10 @@ class GroqProvider:
                     "Groq is temporarily unavailable. Continue with text input or start a demo interview."
                 ) from exc
         raise LLMUnavailable("Groq is temporarily unavailable.")
+
+
+class OpenAIProvider(GroqProvider):
+    """Compatibility alias for routes not yet migrated to Groq configuration."""
 
 
 class FakeProvider:
