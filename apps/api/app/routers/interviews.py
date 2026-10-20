@@ -20,12 +20,7 @@ from app.websocket_manager import connection_manager
 from app.interview import InterviewOrchestrator, SessionState
 from app.interview.interview_blueprint import BlueprintBuilder
 from app.interview.jd_matcher import JDMatcher
-from app.interview.llm_provider import (
-    FakeProvider,
-    GroqProvider,
-    LLMUnavailable,
-)
-from app.interview.stt_provider import DeepgramProvider, STTTranscript, STTUnavailable
+from app.interview.llm_provider import LLMUnavailable
 from app.interview.prompt_chaining import (
     MAX_OUTPUT_TOKENS,
     PromptChainCoordinator,
@@ -38,6 +33,8 @@ from app.interview.token_budget import (
     reserve_tokens,
 )
 from app.config import settings
+from app.providers import DemoProvider, ProviderError, get_llm_provider
+from app.providers.legacy_adapter import LegacyProviderAdapter
 from app.models import CandidateProfile, InterviewSession, Transcript
 from app.idempotency import cached_response, store_response
 from app.interview.voice_metrics import calculate_voice_metrics
@@ -189,15 +186,14 @@ async def _broadcast_voice_metrics(
 
 
 def _make_coordinator(is_demo: bool) -> PromptChainCoordinator | None:
+    provider = get_llm_provider()
     if is_demo:
         if not settings.DEMO_MODE:
             return None
-        return PromptChainCoordinator(FakeProvider())
-    if not settings.groq_enabled:
+        provider = DemoProvider()
+    elif provider.simulated:
         return None
-    return PromptChainCoordinator(
-        GroqProvider(settings.GROQ_API_KEY, model=settings.GROQ_FAST_MODEL)
-    )
+    return PromptChainCoordinator(LegacyProviderAdapter(provider))
 
 
 async def _build_session_blueprint(
