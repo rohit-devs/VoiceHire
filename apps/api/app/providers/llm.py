@@ -14,6 +14,7 @@ Requires `httpx` (add to apps/api dependencies if it is not already there).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from dataclasses import dataclass
 from typing import Optional, Sequence
@@ -169,6 +170,23 @@ class DemoProvider:
     ) -> str:
         if purpose == "report":
             return "[Simulated] Demo evaluation. Not based on a real AI assessment."
+        user_content = next(
+            (message.content for message in reversed(messages) if message.role == "user"),
+            "",
+        )
+        try:
+            payload = json.loads(user_content)
+        except json.JSONDecodeError:
+            payload = {}
+        conversation = payload.get("conversation", [])
+        answers = [
+            item.get("text", "").strip()
+            for item in conversation
+            if item.get("speaker") == "candidate" and item.get("text", "").strip()
+        ]
+        if answers:
+            quote = " ".join(answers[-1].split()[:10]).rstrip(".,!?;:")
+            return f"You mentioned “{quote}.” What trade-off did you consider?"
         return (
             "[Simulated] Thanks. Can you walk me through a specific example "
             "and the result you achieved?"
