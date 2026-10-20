@@ -17,6 +17,8 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from app.providers import ChatMessage, DemoProvider, GroqProvider, ProviderError
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,14 +113,21 @@ class ResumeParser:
     - Image-based resumes (need OCR first)
     """
 
-    def __init__(self, openai_client=None):
+    def __init__(
+        self,
+        provider: DemoProvider | GroqProvider | None = None,
+        *,
+        openai_client=None,
+    ):
         """
         Initialize resume parser.
 
         Args:
-            openai_client: AsyncOpenAI client for LLM calls
+            provider: Provider abstraction for optional resume extraction.
         """
-        self.client = openai_client
+        if openai_client is not None:
+            raise ValueError("Pass an LLM provider instead of an OpenAI client.")
+        self.provider = provider
 
     async def parse(self, resume_text: str) -> ParsedResume:
         """
@@ -131,7 +140,7 @@ class ResumeParser:
             ParsedResume with extracted structured data
         """
 
-        if not self.client:
+        if not self.provider:
             logger.info("No resume extraction provider configured; retaining source text only")
             return ParsedResume(
                 full_name="Candidate",
@@ -169,25 +178,18 @@ Return a JSON object with these fields:
 
 Ensure all lists are populated. If a field is not found, use null or empty list."""
 
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=0.2,  # Low temperature for consistency
-                max_completion_tokens=2000,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
+            response = await self.provider.complete(
+                [
+                    ChatMessage(role="system", content=system_prompt),
+                    ChatMessage(role="user", content=user_prompt),
                 ],
+                purpose="live",
+                temperature=0.2,
+                max_tokens=2000,
             )
 
             # Parse response
-            json_str = response.choices[0].message.content.strip()
+            json_str = response.strip()
             resume_dict = json.loads(json_str)
 
             # Validate with Pydantic
@@ -202,6 +204,8 @@ Ensure all lists are populated. If a field is not found, use null or empty list.
 
             return parsed_resume
 
+        except ProviderError:
+            raise
         except json.JSONDecodeError as e:
             logger.error(f"❌ Invalid JSON from resume parser: {e}")
             return ParsedResume(
