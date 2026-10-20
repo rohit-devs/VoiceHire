@@ -196,6 +196,13 @@ def _make_coordinator(is_demo: bool) -> PromptChainCoordinator | None:
     return PromptChainCoordinator(LegacyProviderAdapter(provider))
 
 
+def _provider_http_exception(error: ProviderError) -> HTTPException:
+    return HTTPException(
+        status_code=429 if error.status == 429 else 503,
+        detail={"user_message": error.user_message},
+    )
+
+
 async def _build_session_blueprint(
     db: AsyncSession, session: InterviewSession
 ) -> dict:
@@ -542,6 +549,14 @@ async def start_interview(
             )
         except TokenBudgetExceeded as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except ProviderError as exc:
+            if reservation:
+                await reconcile_tokens(
+                    db, user_id=user["id"], session_id=session_id,
+                    reserved_tokens=reservation, actual_tokens=0
+                )
+            await orchestrator.transition_to(SessionState.FAILED, "llm_provider_unavailable")
+            raise _provider_http_exception(exc) from exc
         except LLMUnavailable as exc:
             if reservation:
                 await reconcile_tokens(
@@ -594,6 +609,8 @@ async def start_interview(
         )
         return response
 
+    except ProviderError as exc:
+        raise _provider_http_exception(exc) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -893,100 +910,6 @@ async def websocket_endpoint(
         connection_manager.disconnect(session_id, websocket)
 
 
-@router.websocket("/sessions/{session_id}/stt")
-async def speech_to_text_websocket(
-    session_id: str,
-    websocket: WebSocket,
-    token: Optional[str] = None,
-):
-    """Stream microphone chunks through Deepgram and return interim/final text."""
-    db = async_session()
-    try:
-        session = await db.get(InterviewSession, session_id)
-        if session is None:
-            await websocket.close(code=1008)
-            return
-        if token:
-            try:
-                user_info = await _verify_clerk_token(token)
-            except HTTPException:
-                await websocket.close(code=1008)
-                return
-            user_id = user_info["id"]
-        elif settings.DEMO_MODE and session.is_demo:
-            user_id = _DEMO_USER["id"]
-        else:
-            await websocket.close(code=1008)
-            return
-        if session.user_id != user_id or session.is_demo:
-            await websocket.close(code=1008)
-            return
-        if session.current_state != SessionState.INTERVIEWING.value:
-            await websocket.close(code=1008)
-            return
-    finally:
-        await db.close()
-
-    await websocket.accept()
-    if not settings.deepgram_enabled:
-        await websocket.send_json(
-            {
-                "type": "provider",
-                "status": "disabled",
-                "message": "Deepgram is not configured. Use browser speech recognition or text input.",
-            }
-        )
-        await websocket.close()
-        return
-
-    async def audio_chunks():
-        while True:
-            message = await websocket.receive()
-            if message["type"] == "websocket.disconnect":
-                return
-            audio = message.get("bytes")
-            if audio:
-                if len(audio) > 1_048_576:
-                    await websocket.send_json(
-                        {
-                            "type": "provider",
-                            "status": "error",
-                            "message": "Audio chunk exceeded the 1 MiB streaming limit.",
-                        }
-                    )
-                    return
-                yield audio
-            elif message.get("text") == '{"type":"stop"}':
-                return
-
-    async def send_transcript(transcript: STTTranscript) -> None:
-        await websocket.send_json(
-            {
-                "type": "transcript",
-                "text": transcript.text,
-                "is_final": transcript.is_final,
-                "speech_final": transcript.speech_final,
-                "timestamp_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
-                "provider": "deepgram",
-                "model": settings.DEEPGRAM_MODEL,
-            }
-        )
-
-    provider = DeepgramProvider(settings.DEEPGRAM_API_KEY, settings.DEEPGRAM_MODEL)
-    await websocket.send_json({"type": "provider", "status": "ok", "provider": "deepgram"})
-    try:
-        await provider.transcribe(audio_chunks(), send_transcript)
-    except STTUnavailable as exc:
-        await websocket.send_json(
-            {"type": "provider", "status": "error", "message": str(exc)}
-        )
-    except (WebSocketDisconnect, RuntimeError, OSError):
-        return
-    finally:
-        if websocket.client_state.name == "CONNECTED":
-            await websocket.close()
-
-
 @router.post("/sessions/{session_id}/generate-question")
 async def generate_next_question(
     session_id: str,
@@ -1103,6 +1026,13 @@ async def generate_next_question(
                 )
             try:
                 generated_question = await coordinator.generate_next_question(generation_request)
+            except ProviderError as exc:
+                if reservation:
+                    await reconcile_tokens(
+                        db, user_id=user["id"], session_id=session_id,
+                        reserved_tokens=reservation, actual_tokens=0
+                    )
+                raise _provider_http_exception(exc) from exc
             except LLMUnavailable as exc:
                 if reservation:
                     await reconcile_tokens(
@@ -1165,6 +1095,8 @@ async def generate_next_question(
             "timestamp_ms": transcript.timestamp_ms,
         }
         
+    except ProviderError as exc:
+        raise _provider_http_exception(exc) from exc
     except TokenBudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except HTTPException:
