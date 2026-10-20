@@ -1,186 +1,191 @@
-"""Bounded LLM provider implementations used by interviewer question generation."""
+"""LLM providers: Groq (OpenAI-compatible API) and a clearly labelled demo fallback.
 
+Env vars:
+  LLM_PROVIDER      auto | groq | demo        (default: auto)
+  GROQ_API_KEY      key from console.groq.com
+  GROQ_BASE_URL     default https://api.groq.com/openai/v1
+  GROQ_MODEL_LIVE   fast model for live interviewer turns
+  GROQ_MODEL_REPORT stronger model for evaluation/reports
+  DEMO_MODE         true forces the demo provider when LLM_PROVIDER=auto
+
+Model names change over time. Check Groq's model list and override via env.
+Requires `httpx` (add to apps/api dependencies if it is not already there).
+"""
 from __future__ import annotations
 
 import asyncio
-import json
-import logging
-import re
+import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Optional, Sequence
 
-from openai import AsyncOpenAI
+import httpx
 
-from app.config import settings
+DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
+DEFAULT_MODEL_LIVE = "llama-3.1-8b-instant"
+DEFAULT_MODEL_REPORT = "llama-3.3-70b-versatile"
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
-logger = logging.getLogger(__name__)
 
+class ProviderError(Exception):
+    """Raised when a provider fails after its retry. Safe to show `user_message`."""
 
-class LLMUnavailable(RuntimeError):
-    """Raised after bounded provider retries are exhausted."""
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: Optional[int] = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.retryable = retryable
+
+    @property
+    def user_message(self) -> str:
+        if self.status == 429:
+            return (
+                "The AI service is at its free-tier limit right now. "
+                "Please wait a minute, switch to text answers, or use demo mode."
+            )
+        if self.retryable:
+            return "The AI service is temporarily unavailable. Please try again."
+        return "The AI service could not complete this request."
 
 
 @dataclass(frozen=True)
-class Completion:
-    text: str
-    prompt_tokens: int
-    completion_tokens: int
-    provider: str = ""
-    model: str = ""
+class ChatMessage:
+    role: str  # "system" | "user" | "assistant"
+    content: str
 
 
-class LLMProvider(Protocol):
-    async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
-    ) -> Completion: ...
+def env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def create_groq_client() -> AsyncOpenAI:
-    """Build the shared OpenAI-compatible client for Groq-backed legacy helpers."""
-    return AsyncOpenAI(
-        api_key=settings.GROQ_API_KEY,
-        base_url=settings.GROQ_BASE_URL,
-        timeout=15.0,
-        max_retries=0,
-    )
+def _retry_delay(response: httpx.Response) -> float:
+    raw = response.headers.get("retry-after", "")
+    try:
+        return min(max(float(raw), 0.0), 5.0)
+    except ValueError:
+        return 1.0
 
 
 class GroqProvider:
-    """OpenAI-compatible Groq provider with one bounded retry."""
+    name = "groq"
+    simulated = False
 
     def __init__(
         self,
         api_key: str,
         *,
-        model: str | None = None,
-        base_url: str | None = None,
+        base_url: Optional[str] = None,
+        model_live: Optional[str] = None,
+        model_report: Optional[str] = None,
+        timeout: float = 30.0,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
     ) -> None:
-        self.model = model or settings.GROQ_FAST_MODEL
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url or settings.GROQ_BASE_URL,
-            timeout=15.0,
-            max_retries=0,
-        )
+        self.api_key = api_key
+        self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+        self.model_live = model_live or DEFAULT_MODEL_LIVE
+        self.model_report = model_report or DEFAULT_MODEL_REPORT
+        self.timeout = timeout
+        self._transport = transport
+
+    def model_for(self, purpose: str) -> str:
+        return self.model_report if purpose == "report" else self.model_live
 
     async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
-    ) -> Completion:
-        for attempt in range(2):
-            try:
-                response = await asyncio.wait_for(
-                    self.client.chat.completions.create(
-                        model=self.model,
-                        temperature=0.3,
-                        max_tokens=max_tokens,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content},
-                        ],
-                    ),
-                    timeout=18.0,
-                )
-                usage = response.usage
-                completion = Completion(
-                    text=(response.choices[0].message.content or "").strip(),
-                    prompt_tokens=usage.prompt_tokens if usage else 0,
-                    completion_tokens=usage.completion_tokens if usage else 0,
-                    provider="groq",
-                    model=self.model,
-                )
-                logger.info(
-                    "LLM completion provider=groq model=%s session_id=%s prompt_tokens=%d completion_tokens=%d",
-                    self.model,
-                    session_id,
-                    completion.prompt_tokens,
-                    completion.completion_tokens,
-                )
-                if completion.text:
-                    return completion
-                raise LLMUnavailable("Groq returned an empty response.")
-            except LLMUnavailable:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    "Groq request failed session_id=%s attempt=%d error_type=%s",
-                    session_id,
-                    attempt + 1,
-                    type(exc).__name__,
-                )
-                if attempt == 0:
-                    await asyncio.sleep(0.5)
-                    continue
-                if getattr(exc, "status_code", None) == 429 or any(
-                    marker in str(exc).lower() for marker in ("quota", "rate limit", "rate_limit")
-                ):
-                    raise LLMUnavailable(
-                        "Groq's free-tier limit was reached. Try text input again later or start a demo interview."
-                    ) from exc
-                raise LLMUnavailable(
-                    "Groq is temporarily unavailable. Continue with text input or start a demo interview."
-                ) from exc
-        raise LLMUnavailable("Groq is temporarily unavailable.")
-
-
-class FakeProvider:
-    """Deterministic provider for tests and explicitly flagged demo sessions only."""
-
-    _INJECTION = re.compile(
-        r"\b(ignore|disregard|override)\b.{0,80}\b(instructions?|rules?|system|prompt)\b",
-        re.IGNORECASE,
-    )
-
-    async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
-    ) -> Completion:
-        payload = json.loads(user_content)
-        conversation = payload["conversation"]
-        answers = [item["text"] for item in conversation if item["speaker"] == "candidate"]
-        previous_questions = {
-            self._normalize(item["text"])
-            for item in conversation
-            if item["speaker"] == "interviewer"
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        purpose: str = "live",
+        temperature: float = 0.4,
+        max_tokens: int = 600,
+    ) -> str:
+        payload = {
+            "model": self.model_for(purpose),
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
-        blueprint = payload["blueprint"]
-        role = blueprint["target_role"]
-        focus = blueprint.get("interview_focus_areas") or [role]
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        last_error: Optional[ProviderError] = None
 
-        if not answers:
-            question = f"To start, how does your experience prepare you for the {role} role?"
-        else:
-            answer = answers[-1].strip()
-            normalized_answer = self._normalize(answer)
-            if self._INJECTION.search(answer):
-                question = f"Let's focus on your experience for the {role} role. What relevant example would you like to discuss?"
-            elif normalized_answer in {
-                "i don t know",
-                "i do not know",
-                "not sure",
-                "no idea",
-            }:
-                question = "That's okay. What part of the problem would you explore first, and why?"
-            elif len(answer.split()) < 8:
-                question = "Thanks for sharing that. Could you expand with one specific example from your experience?"
-            elif len(answer.split()) < 25:
-                quote = " ".join(answer.split()[:10]).rstrip(".,!?;:")
-                question = f"You mentioned “{quote}.” What trade-off did you consider when you took that approach?"
+        for attempt in range(2):  # one retry, then give up
+            delay = 1.0
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self.timeout, transport=self._transport
+                ) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        json=payload,
+                        headers=headers,
+                    )
+            except httpx.HTTPError as exc:
+                last_error = ProviderError(f"groq network error: {exc}", retryable=True)
             else:
-                area = focus[min(len(answers) - 1, len(focus) - 1)]
-                question = f"From the example you described, what would you change to improve your approach to {area}?"
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        return data["choices"][0]["message"]["content"].strip()
+                    except (KeyError, IndexError, ValueError) as exc:
+                        raise ProviderError("groq returned an unexpected response") from exc
+                retryable = response.status_code in RETRYABLE_STATUS
+                last_error = ProviderError(
+                    f"groq error {response.status_code}",
+                    status=response.status_code,
+                    retryable=retryable,
+                )
+                if not retryable:
+                    raise last_error
+                delay = _retry_delay(response)
 
-        if self._normalize(question) in previous_questions:
-            question = f"Considering your resume and the {role} role, what is one outcome from your experience you can quantify?"
-        if self._normalize(question) in previous_questions:
-            question = f"What is one important lesson from your experience relevant to {role}?"
+            if attempt == 0:
+                await asyncio.sleep(delay)
 
-        return Completion(
-            text=question,
-            prompt_tokens=0,
-            completion_tokens=0,
-            provider="demo",
-            model="mock",
+        assert last_error is not None
+        raise last_error
+
+
+class DemoProvider:
+    """No network, no keys. Output is always labelled as simulated."""
+
+    name = "demo"
+    simulated = True
+    model_live = "demo"
+    model_report = "demo"
+
+    def model_for(self, purpose: str) -> str:
+        return "demo"
+
+    async def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        purpose: str = "live",
+        temperature: float = 0.4,
+        max_tokens: int = 600,
+    ) -> str:
+        if purpose == "report":
+            return "[Simulated] Demo evaluation. Not based on a real AI assessment."
+        return (
+            "[Simulated] Thanks. Can you walk me through a specific example "
+            "and the result you achieved?"
         )
 
-    @staticmethod
-    def _normalize(text: str) -> str:
-        return " ".join(re.findall(r"\w+", text.lower()))
+
+def get_llm_provider() -> "GroqProvider | DemoProvider":
+    choice = os.getenv("LLM_PROVIDER", "auto").strip().lower()
+    key = os.getenv("GROQ_API_KEY", "").strip()
+
+    if choice == "demo" or (choice == "auto" and (env_flag("DEMO_MODE") or not key)):
+        return DemoProvider()
+    if not key:
+        raise ProviderError("LLM_PROVIDER=groq but GROQ_API_KEY is not set")
+    return GroqProvider(
+        key,
+        base_url=os.getenv("GROQ_BASE_URL") or None,
+        model_live=os.getenv("GROQ_MODEL_LIVE") or None,
+        model_report=os.getenv("GROQ_MODEL_REPORT") or None,
+    )
