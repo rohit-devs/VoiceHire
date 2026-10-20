@@ -24,7 +24,7 @@ from app.interview.evaluation_engine import (
     load_rubric,
     measured_evidence,
 )
-from app.interview.llm_provider import LLMProvider, LLMUnavailable, OpenAIProvider
+from app.interview.llm_provider import GroqProvider, LLMProvider, LLMUnavailable
 from app.interview.token_budget import (
     TokenBudgetExceeded,
     reconcile_tokens,
@@ -46,7 +46,10 @@ GUIDANCE_NOTE = "AI scores are guidance for practice, not proof of competence."
 
 
 def _evaluation_provider() -> LLMProvider:
-    return OpenAIProvider(settings.OPENAI_API_KEY)
+    return GroqProvider(
+        settings.GROQ_API_KEY,
+        model=settings.GROQ_STRONG_MODEL,
+    )
 
 
 async def _owned_session(
@@ -68,6 +71,8 @@ def _report_payload(report: EvaluationReport) -> dict[str, Any]:
         "rubric_version": report.rubric_version,
         "measured_metrics": report.measured_metrics,
         "ai_assessments": report.ai_assessments,
+        "provider": (report.ai_assessments or {}).get("_provider"),
+        "model": (report.ai_assessments or {}).get("_model"),
         "error": report.error,
         "guidance_note": GUIDANCE_NOTE,
         "created_at": report.created_at.isoformat() if report.created_at else None,
@@ -189,9 +194,9 @@ async def generate_evaluation_report(
         await db.commit()
         return _report_payload(report)
 
-    if not settings.openai_enabled:
+    if not settings.groq_enabled:
         report.status = "failed"
-        report.error = "Evaluation is unavailable because the OpenAI provider is not configured."
+        report.error = "Evaluation is unavailable because the Groq provider is not configured."
         await db.commit()
         return _report_payload(report)
 
@@ -234,7 +239,15 @@ async def generate_evaluation_report(
         report.status = generated["status"]
         report.rubric_version = generated["rubric_version"]
         report.measured_metrics = generated["measured_metrics"]
-        report.ai_assessments = generated["ai_assessments"]
+        report.ai_assessments = (
+            {
+                **generated["ai_assessments"],
+                "_provider": generated["provider"],
+                "_model": generated["model"],
+            }
+            if generated["ai_assessments"] is not None
+            else None
+        )
         report.error = generated["error"]
         if generated["ai_assessments"] is not None:
             report.overall_score = generated["ai_assessments"]["overall_score"]
