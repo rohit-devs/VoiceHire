@@ -402,3 +402,23 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next prints the existing `next lint` deprecation notice. |
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 Playwright tests passed. |
+
+## Phase 1 — Free-tier provider layer
+
+- Added environment-selected Groq completions for live interviewer turns and evaluation reports, with separate configurable fast and strong models, one bounded retry for rate/quota failures, and user-facing fallback guidance.
+- Added Deepgram Nova streaming STT through the authenticated backend WebSocket. Browser speech recognition remains the no-key STT fallback; typed answers remain available. Browser speech synthesis now supports voice/rate selection and cancellation when interrupted, without requiring Agora credentials.
+- Readiness reports the configured provider and infrastructure states as `ok`, `disabled`, or `error`. Evaluation reports carry provider/model provenance. `.env.example` and `SETUP_GUIDE.md` document Groq and Deepgram setup without including credentials.
+- Added mocked provider coverage and a zero-key browser speech-recognition Playwright flow. Updated the landing-page smoke assertion to match the current “Answers that move.” page and its practice links.
+- No live Groq, Deepgram, Clerk, or Agora credentials were used; live provider quality, quota responses, and hosted integrations remain unverified.
+
+### Final verification
+
+| Command / check | Result |
+|---|---|
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next printed its existing `next lint` deprecation notice. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 4 files and 10 tests passed. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 50 passed, 40 warnings in 44.91s. |
+| `pnpm --filter @voicehire/web exec playwright test --workers=1` | Exit 0; all 5 browser tests passed in 4.3 minutes. |
+| `git diff --check` | Exit 0. |
