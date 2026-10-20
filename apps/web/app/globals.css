@@ -4,61 +4,75 @@
 
 @layer base {
   :root {
-    --background: 222 47% 4%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 7%;
-    --card-foreground: 210 40% 98%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217 91% 60%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 262 83% 58%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 223 47% 15%;
-    --input: 223 47% 15%;
-    --ring: 262 83% 58%;
+    --background: #10100f;
+    --foreground: #e7e5e0;
+    --card: #181817;
+    --card-foreground: #e7e5e0;
+    --primary: #e8321e;
+    --primary-foreground: #10100f;
+    --secondary: #20201e;
+    --secondary-foreground: #e7e5e0;
+    --muted: #20201e;
+    --muted-foreground: #aaa8a1;
+    --accent: #3a1b17;
+    --accent-foreground: #e7e5e0;
+    --destructive: #f0786d;
+    --destructive-foreground: #10100f;
+    --border: #343431;
+    --input: #343431;
+    --ring: #e8321e;
+    --text-primary: #e7e5e0;
+    --text-secondary: #aaa8a1;
+    --text-muted: #85837d;
+    --surface-raised: #20201e;
+    --success: #75c79a;
+    --warning: #e6b86a;
+    --error: #f0786d;
     --radius: 0.75rem;
   }
 }
 
 @layer base {
   * {
-    border-color: hsl(var(--border));
+    border-color: var(--border);
   }
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    background-color: var(--background);
+    color: var(--foreground);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   :focus-visible {
-    outline: 2px solid #c4b5fd;
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 }
 
 @layer components {
   .glass {
-    background-color: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    background-color: var(--card);
+    border: 1px solid var(--border);
   }
   .glass-card {
-    background-color: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: var(--card);
+    border: 1px solid var(--border);
     border-radius: 0.75rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   }
   .gradient-text {
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: transparent;
-    background-image: linear-gradient(to right, #a78bfa, #60a5fa);
+    color: var(--text-primary);
+  }
+  .vh-display {
+    font-family: Impact, "Haettenschweiler", "Arial Narrow Bold", "Arial Narrow", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 0.92;
+    font-weight: 400;
+  }
+  .vh-label {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
   .nav-link {
     display: flex;
@@ -69,21 +83,21 @@
     font-size: 0.875rem;
     font-weight: 500;
     transition: all 0.2s;
-    color: hsl(215 20% 65%);
+    color: var(--text-secondary);
   }
   .nav-link:hover {
-    color: hsl(210 40% 98%);
-    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    background-color: var(--surface-raised);
   }
   .nav-link.active {
-    color: hsl(210 40% 98%);
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border);
   }
   .metric-bar {
     height: 0.5rem;
     border-radius: 9999px;
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--border);
     overflow: hidden;
   }
   .metric-bar-fill {
@@ -129,4 +143,15 @@
 
 .animate-waveform {
   animation: waveform 0.5s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
