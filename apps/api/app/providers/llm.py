@@ -185,6 +185,12 @@ class DemoProvider:
             if item.get("speaker") == "candidate" and item.get("text", "").strip()
         ]
         if answers:
+            answer = answers[-1]
+            answer_lower = answer.lower()
+            if any(term in answer_lower for term in ("ignore", "disregard", "override")) and any(
+                term in answer_lower for term in ("instruction", "rules", "system", "prompt")
+            ):
+                return "Let's focus on your experience for this role. What relevant example can you share?"
             quote = " ".join(answers[-1].split()[:10]).rstrip(".,!?;:")
             return f"You mentioned “{quote}.” What trade-off did you consider?"
         return (
