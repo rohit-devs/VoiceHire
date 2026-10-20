@@ -16,6 +16,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import numpy as np
 
+from app.providers import ChatMessage, DemoProvider, GroqProvider, ProviderError
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,16 +96,22 @@ class JDMatcher:
     6. Generate interview questions for gaps and verification
     """
 
-    def __init__(self, openai_client=None):
+    def __init__(
+        self,
+        provider: DemoProvider | GroqProvider | None = None,
+        *,
+        openai_client=None,
+    ):
         """
         Initialize JD matcher.
 
         Args:
-            openai_client: AsyncOpenAI client for embeddings
+            provider: Provider abstraction for job-description extraction.
         """
-        self.client = openai_client
-        self.embedding_model = "text-embedding-3-small"  # Cost-effective embedding model
-        self.embedding_cache: dict[str, list] = {}  # Cache embeddings to avoid duplicate API calls
+        if openai_client is not None:
+            raise ValueError("Pass an LLM provider instead of an OpenAI client.")
+        self.provider = provider
+        self.embedding_cache: dict[str, list] = {}
 
     async def parse_job_description(self, jd_text: str, job_title: str = "", company: str = "") -> JobDescription:
         """
@@ -118,7 +126,7 @@ class JDMatcher:
             Structured JobDescription with extracted requirements
         """
 
-        if not self.client:
+        if not self.provider:
             logger.info("No JD extraction provider configured; retaining source text only")
             return JobDescription(
                 job_id="unknown",
@@ -156,24 +164,17 @@ Return JSON with:
 - preferred_skills (list of preferred skills)
 - nice_to_have (list of other nice-to-have qualities)"""
 
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=0.2,
-                max_completion_tokens=1000,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
+            response = await self.provider.complete(
+                [
+                    ChatMessage(role="system", content=system_prompt),
+                    ChatMessage(role="user", content=user_prompt),
                 ],
+                purpose="live",
+                temperature=0.2,
+                max_tokens=1000,
             )
 
-            json_str = response.choices[0].message.content.strip()
+            json_str = response.strip()
             jd_dict = json.loads(json_str)
 
             jd = JobDescription(
@@ -191,6 +192,8 @@ Return JSON with:
             )
             return jd
 
+        except ProviderError:
+            raise
         except Exception as e:
             logger.error(f"❌ Failed to parse JD: {e}")
             return JobDescription(
@@ -218,24 +221,8 @@ Return JSON with:
         if text in self.embedding_cache:
             return self.embedding_cache[text]
 
-        if not self.client:
-            logger.warning("⚠️  No OpenAI client configured. Cannot get embeddings.")
-            return None
-
-        try:
-            response = await self.client.embeddings.create(
-                model=self.embedding_model,
-                input=text,
-            )
-
-            embedding = response.data[0].embedding
-            self.embedding_cache[text] = embedding
-
-            return embedding
-
-        except Exception as e:
-            logger.error(f"❌ Failed to get embedding for '{text}': {e}")
-            return None
+        logger.warning("Embedding provider is unavailable; no semantic embedding was generated.")
+        return None
 
     @staticmethod
     def cosine_similarity(vec1: list, vec2: list) -> float:
@@ -276,7 +263,7 @@ Return JSON with:
             JDMatch with detailed skill analysis
         """
 
-        if not self.client:
+        if not self.provider:
             return JDMatch(
                 candidate_id="candidate",
                 job_id=job_description.job_id,
@@ -310,6 +297,21 @@ Return JSON with:
                 emb = await self.get_embedding(skill)
                 if emb:
                     jd_preferred_embeddings[skill] = emb
+
+            if not resume_skill_embeddings or not jd_required_embeddings:
+                return JDMatch(
+                    candidate_id="candidate",
+                    job_id=job_description.job_id,
+                    overall_fit_score=None,
+                    experience_match=None,
+                    skill_coverage=None,
+                    required_skills_found=[],
+                    required_skills_missing=[],
+                    preferred_skills_found=[],
+                    priority_skills_to_verify=[],
+                    gap_areas=[],
+                    strength_areas=[],
+                )
 
             # Match required skills
             required_found: List[SkillMatch] = []
