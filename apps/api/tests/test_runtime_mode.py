@@ -27,8 +27,9 @@ async def test_health_responses_report_configured_mode(monkeypatch, demo_mode, e
 async def test_readiness_reports_optional_services_without_exposing_credentials(monkeypatch):
     from app.config import settings
 
-    secret = "sk_test_do_not_return_this_secret"
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", secret)
+    secret = "gsk_test_do_not_return_this_secret"
+    monkeypatch.setattr(settings, "GROQ_API_KEY", secret)
+    monkeypatch.setattr(settings, "DEEPGRAM_API_KEY", "deepgram-test-key-that-is-valid")
     monkeypatch.setattr(settings, "AGORA_APP_ID", "")
     monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "")
     monkeypatch.setattr(settings, "CLERK_SECRET_KEY", "")
@@ -44,7 +45,8 @@ async def test_readiness_reports_optional_services_without_exposing_credentials(
     assert response.status_code == 200
     payload = response.json()
     assert payload["dependencies"]["database"]["status"] == "ok"
-    assert payload["dependencies"]["openai"]["status"] == "ok"
+    assert payload["dependencies"]["groq"]["status"] == "ok"
+    assert payload["dependencies"]["deepgram"]["status"] == "ok"
     assert payload["dependencies"]["redis"]["status"] == "disabled"
     assert payload["dependencies"]["agora"]["status"] == "disabled"
     assert payload["dependencies"]["clerk"]["status"] == "disabled"
@@ -59,4 +61,21 @@ def test_optional_service_configuration_is_degraded_when_incomplete(monkeypatch)
 
     monkeypatch.setattr(settings, "AGORA_APP_ID", "partially-configured")
     monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "")
-    assert _dependency_status(settings.agora_enabled, True)["status"] == "degraded"
+    assert _dependency_status(settings.agora_enabled, True)["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_readiness_marks_partial_provider_keys_as_errors(monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "short")
+    monkeypatch.setattr(settings, "DEEPGRAM_API_KEY", "")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://localhost",
+    ) as client:
+        response = await client.get("/api/health/ready")
+
+    assert response.status_code == 200
+    dependencies = response.json()["dependencies"]
+    assert dependencies["groq"]["status"] == "error"
+    assert dependencies["deepgram"]["status"] == "disabled"
