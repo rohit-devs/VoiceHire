@@ -25,6 +25,7 @@ from app.interview.llm_provider import (
     GroqProvider,
     LLMUnavailable,
 )
+from app.interview.stt_provider import DeepgramProvider, STTTranscript, STTUnavailable
 from app.interview.prompt_chaining import (
     MAX_OUTPUT_TOKENS,
     PromptChainCoordinator,
@@ -499,7 +500,7 @@ async def start_interview(
                 detail={
                     "degraded": True,
                     "state": SessionState.FAILED.value,
-                    "message": "Question generation is unavailable; configure the OpenAI provider or explicitly create a simulated demo session.",
+                    "message": "Question generation is unavailable. Try again shortly, continue in text mode, or start a simulated demo session.",
                 },
             )
 
@@ -896,6 +897,100 @@ async def websocket_endpoint(
         connection_manager.disconnect(session_id, websocket)
 
 
+@router.websocket("/sessions/{session_id}/stt")
+async def speech_to_text_websocket(
+    session_id: str,
+    websocket: WebSocket,
+    token: Optional[str] = None,
+):
+    """Stream microphone chunks through Deepgram and return interim/final text."""
+    db = async_session()
+    try:
+        session = await db.get(InterviewSession, session_id)
+        if session is None:
+            await websocket.close(code=1008)
+            return
+        if token:
+            try:
+                user_info = await _verify_clerk_token(token)
+            except HTTPException:
+                await websocket.close(code=1008)
+                return
+            user_id = user_info["id"]
+        elif settings.DEMO_MODE and session.is_demo:
+            user_id = _DEMO_USER["id"]
+        else:
+            await websocket.close(code=1008)
+            return
+        if session.user_id != user_id or session.is_demo:
+            await websocket.close(code=1008)
+            return
+        if session.current_state != SessionState.INTERVIEWING.value:
+            await websocket.close(code=1008)
+            return
+    finally:
+        await db.close()
+
+    await websocket.accept()
+    if not settings.deepgram_enabled:
+        await websocket.send_json(
+            {
+                "type": "provider",
+                "status": "disabled",
+                "message": "Deepgram is not configured. Use browser speech recognition or text input.",
+            }
+        )
+        await websocket.close()
+        return
+
+    async def audio_chunks():
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+            audio = message.get("bytes")
+            if audio:
+                if len(audio) > 1_048_576:
+                    await websocket.send_json(
+                        {
+                            "type": "provider",
+                            "status": "error",
+                            "message": "Audio chunk exceeded the 1 MiB streaming limit.",
+                        }
+                    )
+                    return
+                yield audio
+            elif message.get("text") == '{"type":"stop"}':
+                return
+
+    async def send_transcript(transcript: STTTranscript) -> None:
+        await websocket.send_json(
+            {
+                "type": "transcript",
+                "text": transcript.text,
+                "is_final": transcript.is_final,
+                "speech_final": transcript.speech_final,
+                "timestamp_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+                "provider": "deepgram",
+                "model": settings.DEEPGRAM_MODEL,
+            }
+        )
+
+    provider = DeepgramProvider(settings.DEEPGRAM_API_KEY, settings.DEEPGRAM_MODEL)
+    await websocket.send_json({"type": "provider", "status": "ok", "provider": "deepgram"})
+    try:
+        await provider.transcribe(audio_chunks(), send_transcript)
+    except STTUnavailable as exc:
+        await websocket.send_json(
+            {"type": "provider", "status": "error", "message": str(exc)}
+        )
+    except (WebSocketDisconnect, RuntimeError, OSError):
+        return
+    finally:
+        if websocket.client_state.name == "CONNECTED":
+            await websocket.close()
+
+
 @router.post("/sessions/{session_id}/generate-question")
 async def generate_next_question(
     session_id: str,
@@ -935,7 +1030,7 @@ async def generate_next_question(
                 detail={
                     "degraded": True,
                     "state": "failed",
-                    "message": "Question generation is unavailable; configure the OpenAI provider.",
+                    "message": "Question generation is temporarily unavailable. Continue in text mode or start a simulated demo session.",
                 },
             )
         blueprint = session.interview_blueprint
