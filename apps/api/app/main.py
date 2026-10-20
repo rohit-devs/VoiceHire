@@ -60,7 +60,8 @@ async def root():
         "status": "running",
         "mode": "live" if not settings.DEMO_MODE else "demo",
         "features": {
-            "openai": settings.openai_enabled,
+            "groq": settings.groq_enabled,
+            "deepgram": settings.deepgram_enabled,
             "agora": settings.agora_enabled,
             "clerk": settings.clerk_enabled,
             "postgres": settings.is_postgres,
