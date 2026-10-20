@@ -11,10 +11,10 @@ type ButtonVariant = "primary" | "secondary" | "danger";
 
 const buttonStyles = (variant: ButtonVariant, className?: string) =>
   cn(
-    "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300 disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60",
     variant === "primary" && "bg-primary text-primary-foreground hover:brightness-110",
-    variant === "secondary" && "border border-border bg-card text-card-foreground hover:bg-white/10",
-    variant === "danger" && "border border-rose-400/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20",
+    variant === "secondary" && "border border-border bg-card text-card-foreground hover:bg-surface-raised",
+    variant === "danger" && "border border-error/30 bg-error/10 text-error hover:bg-error/20",
     className,
   );
 
@@ -68,7 +68,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "w-full rounded-lg border border-input bg-black/20 px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300",
+        "min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
         className,
       )}
       {...props}
@@ -83,7 +83,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "w-full rounded-lg border border-input bg-black/20 px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300",
+        "min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
         className,
       )}
       {...props}
