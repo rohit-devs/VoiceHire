@@ -59,6 +59,8 @@ export interface EvaluationReport {
   session_id: string;
   status: "processing" | "completed" | "failed" | "insufficient_data";
   rubric_version: string;
+  provider: string | null;
+  model: string | null;
   measured_metrics: {
     speaking_duration_seconds: EvaluationMetric<number>;
     words_per_minute: EvaluationMetric<number>;
