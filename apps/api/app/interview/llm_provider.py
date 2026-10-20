@@ -25,6 +25,8 @@ class Completion:
     text: str
     prompt_tokens: int
     completion_tokens: int
+    provider: str = ""
+    model: str = ""
 
 
 class LLMProvider(Protocol):
@@ -62,6 +64,8 @@ class OpenAIProvider:
                     text=(response.choices[0].message.content or "").strip(),
                     prompt_tokens=usage.prompt_tokens if usage else 0,
                     completion_tokens=usage.completion_tokens if usage else 0,
+                    provider="openai",
+                    model=self.model,
                 )
                 logger.info(
                     "LLM completion session_id=%s prompt_tokens=%d completion_tokens=%d",
@@ -82,6 +86,83 @@ class OpenAIProvider:
                 if attempt == 3:
                     raise LLMUnavailable("The language model is temporarily unavailable") from exc
         raise LLMUnavailable("The language model is temporarily unavailable")
+
+
+class GroqProvider:
+    """OpenAI-compatible Groq provider with one bounded retry."""
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        self.model = model or settings.GROQ_FAST_MODEL
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url or settings.GROQ_BASE_URL,
+            timeout=15.0,
+            max_retries=0,
+        )
+
+    async def complete(
+        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
+    ) -> Completion:
+        for attempt in range(2):
+            try:
+                response = await asyncio.wait_for(
+                    self.client.chat.completions.create(
+                        model=self.model,
+                        temperature=0.3,
+                        max_tokens=max_tokens,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content},
+                        ],
+                    ),
+                    timeout=18.0,
+                )
+                usage = response.usage
+                completion = Completion(
+                    text=(response.choices[0].message.content or "").strip(),
+                    prompt_tokens=usage.prompt_tokens if usage else 0,
+                    completion_tokens=usage.completion_tokens if usage else 0,
+                    provider="groq",
+                    model=self.model,
+                )
+                logger.info(
+                    "LLM completion provider=groq model=%s session_id=%s prompt_tokens=%d completion_tokens=%d",
+                    self.model,
+                    session_id,
+                    completion.prompt_tokens,
+                    completion.completion_tokens,
+                )
+                if completion.text:
+                    return completion
+                raise LLMUnavailable("Groq returned an empty response.")
+            except LLMUnavailable:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "Groq request failed session_id=%s attempt=%d error_type=%s",
+                    session_id,
+                    attempt + 1,
+                    type(exc).__name__,
+                )
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
+                    continue
+                if getattr(exc, "status_code", None) == 429 or any(
+                    marker in str(exc).lower() for marker in ("quota", "rate limit", "rate_limit")
+                ):
+                    raise LLMUnavailable(
+                        "Groq's free-tier limit was reached. Try text input again later or start a demo interview."
+                    ) from exc
+                raise LLMUnavailable(
+                    "Groq is temporarily unavailable. Continue with text input or start a demo interview."
+                ) from exc
+        raise LLMUnavailable("Groq is temporarily unavailable.")
 
 
 class FakeProvider:
@@ -135,7 +216,13 @@ class FakeProvider:
         if self._normalize(question) in previous_questions:
             question = f"What is one important lesson from your experience relevant to {role}?"
 
-        return Completion(text=question, prompt_tokens=0, completion_tokens=0)
+        return Completion(
+            text=question,
+            prompt_tokens=0,
+            completion_tokens=0,
+            provider="demo",
+            model="mock",
+        )
 
     @staticmethod
     def _normalize(text: str) -> str:
