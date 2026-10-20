@@ -26,8 +26,6 @@ class Settings(BaseSettings):
     GROQ_FAST_MODEL: str = "llama-3.1-8b-instant"
     GROQ_STRONG_MODEL: str = "llama-3.3-70b-versatile"
     DEEPGRAM_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"
     EVALUATION_RUBRIC_WEIGHTS: str = ""
 
     # ── Agora ──
@@ -50,10 +48,6 @@ class Settings(BaseSettings):
     @property
     def allowed_hosts_list(self) -> List[str]:
         return [x.strip() for x in self.ALLOWED_HOSTS.split(",") if x.strip()]
-
-    @property
-    def openai_enabled(self) -> bool:
-        return bool(self.OPENAI_API_KEY) and len(self.OPENAI_API_KEY) > 20
 
     @property
     def groq_enabled(self) -> bool:
