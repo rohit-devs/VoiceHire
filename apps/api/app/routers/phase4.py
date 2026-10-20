@@ -32,9 +32,9 @@ def get_resume_parser() -> ResumeParser:
     """Get or create ResumeParser singleton"""
     global resume_parser
     if resume_parser is None:
-        from openai import AsyncOpenAI
+        from app.interview.llm_provider import create_groq_client
 
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        client = create_groq_client() if settings.groq_enabled else None
         resume_parser = ResumeParser(openai_client=client)
     return resume_parser
 
@@ -51,9 +51,9 @@ def get_jd_matcher() -> JDMatcher:
     """Get or create JDMatcher singleton"""
     global jd_matcher
     if jd_matcher is None:
-        from openai import AsyncOpenAI
+        from app.interview.llm_provider import create_groq_client
 
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        client = create_groq_client() if settings.groq_enabled else None
         jd_matcher = JDMatcher(openai_client=client)
     return jd_matcher
 

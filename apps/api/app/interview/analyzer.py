@@ -10,7 +10,8 @@ import re
 import asyncio
 from typing import Optional
 from pydantic import BaseModel, Field
-from openai import AsyncOpenAI
+from app.config import settings
+from app.interview.llm_provider import GroqProvider
 
 logger = logging.getLogger(__name__)
 
@@ -69,17 +70,16 @@ class ResponseAnalyzer:
         "literally", "actually", "kind of", "sort of", "i mean"
     ]
 
-    def __init__(self, openai_api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str | None = None, model: str | None = None):
         """
-        Initialize analyzer with OpenAI client.
+        Initialize analyzer with the configured Groq provider.
         
         Args:
-            openai_api_key: OpenAI API key
-            model: Model name (default: gpt-4o-mini for fast inference)
+            api_key: Optional Groq API key override
+            model: Optional model name override
         """
-        self.client = AsyncOpenAI(api_key=openai_api_key)
-        self.model = model
-        logger.info(f"✅ ResponseAnalyzer initialized with model: {model}")
+        self.model = model or settings.GROQ_FAST_MODEL
+        self.provider = GroqProvider(api_key or settings.GROQ_API_KEY, model=self.model)
 
     def _extract_filler_words(self, transcript: str) -> list[str]:
         """
@@ -230,8 +230,6 @@ Recommended actions:
 
 Always respond with valid JSON matching the required schema."""
 
-            # Call OpenAI API
-            logger.debug(f"📤 Sending to OpenAI ({self.model})...")
             user_message = f"""Analyze this candidate response:
 
 {context}
@@ -252,18 +250,14 @@ Return JSON with this exact structure:
             last_error: Exception | None = None
             for attempt in range(3):
                 try:
-                    response = await self.client.chat.completions.create(
-                        model=self.model,
-                        response_format={"type": "json_object"},
-                        temperature=0.3,
-                        max_completion_tokens=500,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_message},
-                        ],
+                    response = await self.provider.complete(
+                        session_id="response-analysis",
+                        system_prompt=system_prompt,
+                        user_content=user_message,
+                        max_tokens=500,
                     )
                     analysis = ResponseAnalysis.model_validate(
-                        json.loads(response.choices[0].message.content or "{}")
+                        json.loads(response.text)
                     )
                     break
                 except (json.JSONDecodeError, ValueError) as exc:
