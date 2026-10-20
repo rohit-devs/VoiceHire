@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ["APP_ENV"] = "development"
 os.environ["DEMO_MODE"] = "true"
-os.environ["OPENAI_API_KEY"] = "test-only-openai-placeholder-not-a-secret"
+os.environ["GROQ_API_KEY"] = "test-only-groq-placeholder-not-a-secret"
 os.environ["CLERK_SECRET_KEY"] = "test-only-clerk-placeholder-not-a-secret"
 _test_database_dir = tempfile.TemporaryDirectory(prefix="voicehire-tests-")
 _test_database_path = Path(_test_database_dir.name) / "voicehire.db"
