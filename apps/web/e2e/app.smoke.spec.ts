@@ -38,12 +38,17 @@ async function enterLocalDemo(page: Page) {
   await expect(page.getByLabel("Target role")).toHaveValue("Backend Engineer");
 }
 
-test("landing page explains the product and offers the demo interview", async ({ page }) => {
+test("landing page explains the product and links to practice", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /prepare to perform/i })).toBeVisible();
-  const tryDemo = page.getByRole("link", { name: "Try demo interview" });
-  await expect(tryDemo).toHaveAttribute("href", "/sign-in");
-  await expect(tryDemo).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: /answers\s+that\s+move/i })).toBeVisible();
+  const startPracticing = page.getByRole("link", { name: "Start practicing" });
+  await expect(startPracticing).toHaveCount(2);
+  await expect(startPracticing.first()).toHaveAttribute("href", "/sign-up");
+  await expect(startPracticing.last()).toHaveAttribute("href", "/sign-up");
+  await expect(page.getByRole("link", { name: "Explore the method" })).toHaveAttribute(
+    "href",
+    "#method",
+  );
   await captureResponsiveScreenshots(page, "landing");
 });
 
@@ -182,4 +187,75 @@ test("creates, completes, and reloads a clearly labeled simulated interview", as
   await captureResponsiveScreenshots(page, "report-demo-no-evaluation");
   await page.goto("/coach");
   await expect(page.getByText(/completed evaluation/i)).toBeVisible();
+});
+
+test("uses browser speech recognition in zero-key demo mode", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    class TestSpeechRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onspeechstart: (() => void) | null = null;
+      onspeechend: (() => void) | null = null;
+      onend: (() => void) | null = null;
+
+      start() {
+        (window as Window & { __speechRecognitionStarted?: boolean }).__speechRecognitionStarted = true;
+      }
+
+      stop() {}
+    }
+    class TestUtterance {
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor(readonly text: string) {}
+    }
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      value: TestSpeechRecognition,
+    });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: TestUtterance,
+    });
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        getVoices: () => [],
+        speak: (utterance: TestUtterance) => queueMicrotask(() => utterance.onend?.()),
+        cancel: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    });
+  });
+  await enterLocalDemo(page);
+  await page.goto("/interview/new");
+
+  await page.getByLabel("Job Role").fill("Backend Engineer");
+  await page.getByLabel("Experience Level").selectOption("Mid (3-5 years)");
+  await page.getByRole("button", { name: /technical.*coding.*architecture/i }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Resume text").fill("Built Python APIs with PostgreSQL.");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Paste Job Description").fill("Build reliable backend services.");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: /technical lead/i }).click();
+  await page.getByRole("checkbox", { name: "Simulated demo" }).check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
+  await expect(page).toHaveURL(/\/interview\/prepare\//, { timeout: 60_000 });
+  await page.getByRole("button", { name: "Enter Interview" }).click();
+  await expect(page).toHaveURL(/\/interview\/live\//, { timeout: 60_000 });
+  await page.getByRole("button", { name: "Start Interview" }).click();
+
+  await expect.poll(() =>
+    page.evaluate(() =>
+      Boolean((window as Window & { __speechRecognitionStarted?: boolean }).__speechRecognitionStarted),
+    ),
+  ).toBe(true);
+  await expect(page.getByRole("textbox", { name: "Type your answer" })).toBeVisible();
 });
