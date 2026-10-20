@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     GROQ_FAST_MODEL: str = "llama-3.1-8b-instant"
     GROQ_STRONG_MODEL: str = "llama-3.3-70b-versatile"
     DEEPGRAM_API_KEY: str = ""
+    DEEPGRAM_MODEL: str = "nova-3"
     EVALUATION_RUBRIC_WEIGHTS: str = ""
 
     # ── Agora ──
