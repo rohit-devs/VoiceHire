@@ -10,16 +10,18 @@ export default function FingerprintPage() {
 
   return (
     <AppShell>
-      <main className="flex min-h-screen items-center justify-center bg-[#0a0a0f] px-6">
-        <section className="max-w-lg space-y-4 text-center">
-          <h1 className="text-2xl font-bold text-white">Communication metrics unavailable</h1>
-          <p role="status" className="text-muted-foreground">
-            Insufficient verified voice data is available to calculate a communication profile.
-            Text is not used to infer confidence, emotion, or vocal tone.
+      <main className="flex min-h-screen items-center justify-center bg-[#0a0a0a] px-6">
+        <section className="max-w-lg space-y-5 text-center">
+          <h1 className="text-2xl font-bold text-white sm:text-3xl">
+            Communication metrics unavailable
+          </h1>
+          <p role="status" className="text-sm leading-relaxed text-neutral-400">
+            Insufficient verified voice data is available to calculate a communication
+            profile. Text is not used to infer confidence, emotion, or vocal tone.
           </p>
           <Link
             href={`/interview/complete/${interviewId}`}
-            className="inline-flex rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15"
+            className="inline-flex rounded-lg border border-neutral-700 bg-neutral-900 px-5 py-3 text-sm font-semibold text-white transition hover:border-[#e8321e] hover:bg-[#111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8321e]"
           >
             Return to interview summary
           </Link>
