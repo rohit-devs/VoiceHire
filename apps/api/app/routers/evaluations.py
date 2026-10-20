@@ -64,15 +64,20 @@ async def _owned_session(
 
 
 def _report_payload(report: EvaluationReport) -> dict[str, Any]:
+    assessments = report.ai_assessments or {}
     return {
         "id": report.id,
         "session_id": report.session_id,
         "status": report.status,
         "rubric_version": report.rubric_version,
         "measured_metrics": report.measured_metrics,
-        "ai_assessments": report.ai_assessments,
-        "provider": (report.ai_assessments or {}).get("_provider"),
-        "model": (report.ai_assessments or {}).get("_model"),
+        "ai_assessments": (
+            {key: value for key, value in assessments.items() if not key.startswith("_")}
+            if report.ai_assessments is not None
+            else None
+        ),
+        "provider": assessments.get("_provider"),
+        "model": assessments.get("_model"),
         "error": report.error,
         "guidance_note": GUIDANCE_NOTE,
         "created_at": report.created_at.isoformat() if report.created_at else None,
