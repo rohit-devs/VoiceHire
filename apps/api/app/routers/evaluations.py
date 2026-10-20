@@ -24,7 +24,9 @@ from app.interview.evaluation_engine import (
     load_rubric,
     measured_evidence,
 )
-from app.interview.llm_provider import GroqProvider, LLMProvider, LLMUnavailable
+from app.interview.llm_provider import LLMProvider, LLMUnavailable
+from app.providers import ProviderError, get_llm_provider
+from app.providers.legacy_adapter import LegacyProviderAdapter
 from app.interview.token_budget import (
     TokenBudgetExceeded,
     reconcile_tokens,
@@ -46,9 +48,16 @@ GUIDANCE_NOTE = "AI scores are guidance for practice, not proof of competence."
 
 
 def _evaluation_provider() -> LLMProvider:
-    return GroqProvider(
-        settings.GROQ_API_KEY,
-        model=settings.GROQ_STRONG_MODEL,
+    provider = get_llm_provider()
+    if provider.simulated:
+        raise ProviderError("The evaluation provider is disabled for real reports.")
+    return LegacyProviderAdapter(provider, purpose="report")
+
+
+def _provider_http_exception(error: ProviderError) -> HTTPException:
+    return HTTPException(
+        status_code=429 if error.status == 429 else 503,
+        detail={"user_message": error.user_message},
     )
 
 
@@ -199,18 +208,13 @@ async def generate_evaluation_report(
         await db.commit()
         return _report_payload(report)
 
-    if not settings.groq_enabled:
-        report.status = "failed"
-        report.error = "Evaluation is unavailable because the Groq provider is not configured."
-        await db.commit()
-        return _report_payload(report)
-
     transcript_chars = sum(len(row.message) for row in transcripts)
     estimated_tokens = math.ceil(
         (transcript_chars + 18_000) / 4
     ) + 2 * MAX_EVALUATION_OUTPUT_TOKENS
     try:
         context = await _evaluation_context(db, session)
+        provider = _evaluation_provider()
         await reserve_tokens(
             db,
             user_id=user["id"],
@@ -222,7 +226,7 @@ async def generate_evaluation_report(
             session=session,
             transcripts=transcripts,
             context=context,
-            provider=_evaluation_provider(),
+            provider=provider,
             weights_override=settings.EVALUATION_RUBRIC_WEIGHTS or None,
         )
         if generated["tokens_used"]:
@@ -285,6 +289,11 @@ async def generate_evaluation_report(
         report.error = str(exc)
         await db.commit()
         return _report_payload(report)
+    except ProviderError as exc:
+        report.status = "failed"
+        report.error = exc.user_message
+        await db.commit()
+        raise _provider_http_exception(exc) from exc
     except LLMUnavailable:
         # The provider may have billed a request without returning usage metadata;
         # keep the full reservation rather than undercounting cost.

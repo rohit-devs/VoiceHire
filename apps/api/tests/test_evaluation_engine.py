@@ -263,7 +263,7 @@ async def test_missing_transcript_data_has_null_metrics_and_skips_provider():
 
 
 @pytest.mark.asyncio
-async def test_report_fails_explicitly_when_groq_is_not_configured(monkeypatch):
+async def test_report_returns_provider_fallback_message_when_provider_is_disabled(monkeypatch):
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
@@ -310,11 +310,8 @@ async def test_report_fails_explicitly_when_groq_is_not_configured(monkeypatch):
         response = await client.post(
             f"/api/evaluations/sessions/{session_id}/report/generate"
         )
-    assert response.status_code == 200, response.text
-    report = response.json()
-    assert report["status"] == "failed"
-    assert report["ai_assessments"] is None
-    assert "Groq provider is not configured" in report["error"]
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"]["user_message"]
 
 
 @pytest.mark.asyncio
