@@ -22,8 +22,8 @@ from app.interview.interview_blueprint import BlueprintBuilder
 from app.interview.jd_matcher import JDMatcher
 from app.interview.llm_provider import (
     FakeProvider,
+    GroqProvider,
     LLMUnavailable,
-    OpenAIProvider,
 )
 from app.interview.prompt_chaining import (
     MAX_OUTPUT_TOKENS,
@@ -192,9 +192,11 @@ def _make_coordinator(is_demo: bool) -> PromptChainCoordinator | None:
         if not settings.DEMO_MODE:
             return None
         return PromptChainCoordinator(FakeProvider())
-    if not settings.openai_enabled:
+    if not settings.groq_enabled:
         return None
-    return PromptChainCoordinator(OpenAIProvider(settings.OPENAI_API_KEY))
+    return PromptChainCoordinator(
+        GroqProvider(settings.GROQ_API_KEY, model=settings.GROQ_FAST_MODEL)
+    )
 
 
 async def _build_session_blueprint(
