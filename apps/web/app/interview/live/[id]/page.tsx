@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import { apiInterviewService as interviewService } from "@/lib/services/apiInterviewService";
 import { useInterviewStore } from "@/stores/interviewStore";
 import { useInterviewWebSocket } from "@/hooks/useInterviewWebSocket";
@@ -11,9 +12,10 @@ import { VoiceOrb } from "@/components/interview/VoiceOrb";
 import { Loader2, ArrowRight, PhoneOff, Mic, MicOff } from "lucide-react";
 import { Button, Card, Textarea } from "@/components/ui/primitives";
 import {
-  BrowserSpeechRecognitionProvider,
+  DeepgramSpeechRecognitionProvider,
   BrowserSpeechSynthesisProvider,
   type FinalSpeechSegment,
+  type STTProvider,
 } from "@/lib/speech/speechProviders";
 
 interface RoomTranscript {
@@ -50,7 +52,11 @@ export default function LiveInterviewPage() {
   const [secureContext, setSecureContext] = useState(true);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [speechRestartSignal, setSpeechRestartSignal] = useState(0);
+  const [speechVoices, setSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [speechVoiceURI, setSpeechVoiceURI] = useState("");
+  const [speechRate, setSpeechRate] = useState(1);
   const [isDemo, setIsDemo] = useState(false);
   const [interviewType, setInterviewType] = useState("Interview");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -58,7 +64,7 @@ export default function LiveInterviewPage() {
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState("");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const speechRecognitionRef = useRef<BrowserSpeechRecognitionProvider | null>(null);
+  const speechRecognitionRef = useRef<STTProvider | null>(null);
   const speechSynthesisRef = useRef<BrowserSpeechSynthesisProvider | null>(null);
   const processingAnswerRef = useRef(false);
   const spokenQuestionRef = useRef("");
@@ -78,7 +84,6 @@ export default function LiveInterviewPage() {
     isMuted,
     audioLevel,
     networkQuality,
-    error: agoraError,
     join: joinAgora,
     leave: leaveAgora,
     mute: muteAgora,
@@ -151,18 +156,27 @@ export default function LiveInterviewPage() {
   }, [wsMetrics]);
 
   useEffect(() => {
-    const recognition = new BrowserSpeechRecognitionProvider("en");
+    const recognition = new DeepgramSpeechRecognitionProvider(
+      sessionId,
+      authToken,
+      !isDemo,
+      "en",
+    );
     const synthesis = new BrowserSpeechSynthesisProvider();
     speechRecognitionRef.current = recognition;
     speechSynthesisRef.current = synthesis;
-    setSpeechSupported(recognition.supported && synthesis.supported);
+    setSpeechSupported(recognition.supported);
+    const updateVoices = () => setSpeechVoices(synthesis.voices);
+    updateVoices();
+    if (synthesis.supported) window.speechSynthesis.addEventListener("voiceschanged", updateVoices);
     return () => {
       recognition.stop();
       synthesis.stop();
+      if (synthesis.supported) window.speechSynthesis.removeEventListener("voiceschanged", updateVoices);
       speechRecognitionRef.current = null;
       speechSynthesisRef.current = null;
     };
-  }, []);
+  }, [authToken, isDemo, sessionId]);
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -202,9 +216,9 @@ export default function LiveInterviewPage() {
         }
       }
       setIsInterviewStarted(true);
-      setOrbState(useRealVoice ? "connecting" : "idle");
+      setOrbState(useRealVoice ? "listening" : "idle");
       connectWebSocket();
-      if (useRealVoice) await joinAgora();
+      if (useRealVoice) void joinAgora();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to start interview.");
       setIsInterviewStarted(false);
@@ -219,6 +233,7 @@ export default function LiveInterviewPage() {
     if (!message || processingAnswerRef.current) return;
     processingAnswerRef.current = true;
     speechRecognitionRef.current?.stop();
+    speechSynthesisRef.current?.stop();
     setActionError("");
     setOrbState("user-speaking");
     try {
@@ -247,7 +262,7 @@ export default function LiveInterviewPage() {
         timestamp: nextQuestion.timestamp_ms,
       });
       setLastSubmittedAnswer("");
-      setOrbState(useRealVoice && agoraState === "connected" ? "speaking" : "idle");
+      setOrbState(useRealVoice ? "speaking" : "idle");
       if (nextQuestion.state === "completed") {
         setInterviewPhase("processing");
         disconnectWebSocket();
@@ -258,11 +273,11 @@ export default function LiveInterviewPage() {
       }
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to submit answer or generate the next question.");
-      setOrbState(useRealVoice && agoraState === "connected" ? "listening" : "idle");
+      setOrbState(useRealVoice ? "listening" : "idle");
     } finally {
       processingAnswerRef.current = false;
     }
-  }, [agoraState, answerText, appendTranscript, disconnectWebSocket, interviewId, leaveAgora, router, sessionId, setInterviewPhase, useRealVoice]);
+  }, [answerText, appendTranscript, disconnectWebSocket, interviewId, leaveAgora, router, sessionId, setInterviewPhase, useRealVoice]);
 
   const retryQuestionGeneration = useCallback(async () => {
     if (!lastSubmittedAnswer) return;
@@ -279,27 +294,28 @@ export default function LiveInterviewPage() {
         timestamp: nextQuestion.timestamp_ms,
       });
       setLastSubmittedAnswer("");
-      setOrbState(useRealVoice && agoraState === "connected" ? "speaking" : "idle");
+      setOrbState(useRealVoice ? "speaking" : "idle");
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Failed to generate the next question.");
-      setOrbState(useRealVoice && agoraState === "connected" ? "listening" : "idle");
+      setOrbState(useRealVoice ? "listening" : "idle");
     }
-  }, [agoraState, appendTranscript, lastSubmittedAnswer, sessionId, useRealVoice]);
+  }, [appendTranscript, lastSubmittedAnswer, sessionId, useRealVoice]);
 
   const speakCurrentQuestion = useCallback(() => {
     if (
       !isInterviewStarted ||
       !useRealVoice ||
-      agoraState !== "connected" ||
       !aiQuestion ||
       spokenQuestionRef.current === aiQuestion
     ) return;
     const synthesis = speechSynthesisRef.current;
     if (!synthesis?.supported) return;
+    synthesis.setVoice(speechVoiceURI);
+    synthesis.setRate(speechRate);
     spokenQuestionRef.current = aiQuestion;
     setOrbState("speaking");
     synthesis.speak(aiQuestion, () => setOrbState("listening"));
-  }, [agoraState, aiQuestion, isInterviewStarted, useRealVoice]);
+  }, [aiQuestion, isInterviewStarted, speechRate, speechVoiceURI, useRealVoice]);
 
   useEffect(() => {
     speakCurrentQuestion();
@@ -310,7 +326,6 @@ export default function LiveInterviewPage() {
     if (
       !isInterviewStarted ||
       !useRealVoice ||
-      agoraState !== "connected" ||
       !speechSupported ||
       speechError ||
       orbState !== "listening" ||
@@ -335,13 +350,13 @@ export default function LiveInterviewPage() {
         () => {
           if (!processingAnswerRef.current) setSpeechRestartSignal((value) => value + 1);
         },
+        setInterimTranscript,
       );
     } catch (cause) {
       setSpeechError(cause instanceof Error ? cause.message : "Speech recognition could not start.");
     }
     return () => recognition.stop();
   }, [
-    agoraState,
     isInterviewStarted,
     lastSubmittedAnswer,
     orbState,
@@ -373,12 +388,14 @@ export default function LiveInterviewPage() {
     setUseRealVoice(enableVoice);
     setSpeechError(null);
     if (!enableVoice) {
+      speechSynthesisRef.current?.stop();
       speechRecognitionRef.current?.stop();
       speechSynthesisRef.current?.stop();
       await leaveAgora();
       setOrbState("idle");
     } else if (isInterviewStarted) {
-      await joinAgora();
+      void joinAgora();
+      setOrbState("listening");
     }
   };
 
@@ -425,7 +442,7 @@ export default function LiveInterviewPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => void toggleVoiceMode()}
-            disabled={!secureContext || agoraState === "connecting" || agoraState === "requesting-permission"}
+            disabled={!secureContext}
             aria-label={secureContext ? undefined : "Voice unavailable: microphone needs HTTPS or localhost"}
             className={`text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
               useRealVoice
@@ -477,9 +494,9 @@ export default function LiveInterviewPage() {
                 <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Voice Status</p>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-muted-foreground">Agora</span>
-                    <span className={`text-[11px] ${agoraState === "connected" ? "text-emerald-400" : "text-amber-400"}`}>
-                      {agoraState.replace(/-/g, " ")}
+                    <span className="text-[11px] text-muted-foreground">Optional RTC</span>
+                    <span className={`text-[11px] ${agoraState === "connected" ? "text-emerald-400" : "text-muted-foreground"}`}>
+                      {agoraState === "connected" ? "connected" : "not required"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -564,9 +581,9 @@ export default function LiveInterviewPage() {
                     </p>
                     {useRealVoice && (
                       <p className="mt-3 text-[11px] text-slate-400">
-                        {agoraState === "connected"
-                          ? "Agora audio connected · Browser speech recognition · Local speech playback"
-                          : `Voice unavailable (${agoraState.replace(/-/g, " ")}). Use text input or the labeled simulated demo.`}
+                        {speechSupported
+                          ? "Streaming speech with browser fallback · Local speech playback · Agora optional"
+                          : "Voice recognition is unavailable. You can continue with text input."}
                       </p>
                     )}
                     {!secureContext && (
@@ -606,6 +623,48 @@ export default function LiveInterviewPage() {
               )}
 
               {/* Controls */}
+              {useRealVoice && (
+                <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
+                  {speechVoices.length > 0 && (
+                    <label className="flex items-center gap-2">
+                      Interviewer voice
+                      <select
+                        value={speechVoiceURI}
+                        onChange={(event) => {
+                          const voiceURI = event.target.value;
+                          setSpeechVoiceURI(voiceURI);
+                          speechSynthesisRef.current?.setVoice(voiceURI);
+                        }}
+                        className="min-h-10 rounded-md border border-white/10 bg-[#141414] px-2 text-foreground"
+                      >
+                        <option value="">System default</option>
+                        {speechVoices.map((voice) => (
+                          <option key={voice.voiceURI} value={voice.voiceURI}>
+                            {voice.name} ({voice.lang})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-2">
+                    Speech rate
+                    <input
+                      type="range"
+                      min="0.75"
+                      max="1.25"
+                      step="0.05"
+                      value={speechRate}
+                      onChange={(event) => {
+                        const rate = Number(event.target.value);
+                        setSpeechRate(rate);
+                        speechSynthesisRef.current?.setRate(rate);
+                      }}
+                      aria-label="Interviewer speech rate"
+                    />
+                    <span>{speechRate.toFixed(2)}×</span>
+                  </label>
+                </div>
+              )}
               <div className="flex items-center justify-center gap-3">
                 {!isInterviewStarted ? (
                   <Button
@@ -664,11 +723,18 @@ export default function LiveInterviewPage() {
                       Retry question
                     </button>
                   )}
+                  <p className="mt-1 text-muted-foreground">
+                    Typed answers remain available.{" "}
+                    <Link href="/interview/new" className="underline">
+                      Return to setup for a simulated demo
+                    </Link>
+                    .
+                  </p>
                 </div>
               )}
-              {(agoraError || speechError || (!speechSupported && isInterviewStarted && agoraState === "connected")) && (
+              {(speechError || (!speechSupported && isInterviewStarted)) && (
                 <div role="status" className="text-xs text-amber-300 text-center">
-                  {agoraError || speechError || "Browser speech recognition/playback is unsupported; use text input."}
+                  {speechError || "Browser speech recognition is unsupported; use text input."}
                   <p className="mt-1 text-slate-400">Your interview remains available in text mode.</p>
                 </div>
               )}
@@ -700,6 +766,11 @@ export default function LiveInterviewPage() {
               <span className="text-[11px] text-muted-foreground">Auto-scroll</span>
             </label>
           </div>
+          {interimTranscript && (
+            <p aria-hidden="true" className="px-4 pt-3 text-xs italic text-muted-foreground">
+              {interimTranscript}
+            </p>
+          )}
           <div role="log" aria-label="Interview transcript" aria-live="polite" aria-relevant="additions" className="flex-1 overflow-y-auto p-4 space-y-3">
             {transcripts.map((t) => (
               <div
