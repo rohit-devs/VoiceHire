@@ -8,7 +8,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
 from app.database import init_db, close_db
-from app.routers import health, agora, interviews, evaluations, users, phase4, agora_events
+from app.routers import health, agora, interviews, evaluations, users, phase4, agora_events, stt
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ app.add_middleware(
 
 # ── Routers ──
 app.include_router(health.router, prefix="/api/health")
+app.include_router(stt.router, prefix="/api/stt")
 app.include_router(agora.router, prefix="/api/agora")
 app.include_router(interviews.router, prefix="/api/interviews")
 app.include_router(evaluations.router, prefix="/api/evaluations")
