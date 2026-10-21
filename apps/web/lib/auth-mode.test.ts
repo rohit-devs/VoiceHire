@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ROUTES,
+  getAuthMode,
   isAuthPage,
   isPublicPath,
   resolveFlowRedirect,
@@ -11,6 +12,41 @@ import {
 const signedOut = { isAuthenticated: false, onboardingComplete: false };
 const newUser = { isAuthenticated: true, onboardingComplete: false };
 const member = { isAuthenticated: true, onboardingComplete: true };
+
+describe("getAuthMode", () => {
+  it("detects clerk mode when clerk keys are provided", () => {
+    expect(
+      getAuthMode({
+        CLERK_SECRET_KEY: "sec_123",
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pub_123",
+      }),
+    ).toBe("clerk");
+  });
+
+  it("detects local-demo mode when demo and dev flags are active", () => {
+    expect(
+      getAuthMode({
+        APP_ENV: "development",
+        DEMO_MODE: "true",
+      }),
+    ).toBe("local-demo");
+    expect(
+      getAuthMode({
+        NEXT_PUBLIC_APP_ENV: "development",
+        NEXT_PUBLIC_DEMO_MODE: "true",
+      }),
+    ).toBe("local-demo");
+  });
+
+  it("returns unavailable when neither clerk nor demo is configured", () => {
+    expect(
+      getAuthMode({
+        APP_ENV: "production",
+        DEMO_MODE: "false",
+      }),
+    ).toBe("unavailable");
+  });
+});
 
 describe("path helpers", () => {
   it("treats landing and auth pages as public", () => {

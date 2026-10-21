@@ -1,16 +1,52 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
-import { getAuthMode } from "@/lib/auth-mode";
+import { getAuthMode, resolveFlowRedirect } from "@/lib/auth-mode";
 
-const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
+async function checkOnboardingComplete(token?: string | null): Promise<boolean> {
+  const apiInternalUrl = (process.env.API_INTERNAL_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  try {
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${apiInternalUrl}/api/users/me`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { target_role?: string | null };
+    return Boolean(data?.target_role && data.target_role.trim().length > 0);
+  } catch {
+    return false;
+  }
+}
 
 const clerkHandler = clerkMiddleware(async (auth, request) => {
-  if (!isPublicRoute(request)) {
-    await auth.protect();
+  const { userId, getToken } = await auth();
+  const isAuthenticated = Boolean(userId);
+  let onboardingComplete = false;
+  if (isAuthenticated) {
+    const token = await getToken();
+    onboardingComplete = await checkOnboardingComplete(token);
   }
+  const redirectPath = resolveFlowRedirect({
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    isAuthenticated,
+    onboardingComplete,
+  });
+  if (redirectPath) {
+    return NextResponse.redirect(new URL(redirectPath, request.url));
+  }
+  return NextResponse.next();
 });
 
-export default function middleware(request: NextRequest, event: NextFetchEvent) {
+export default async function middleware(request: NextRequest, event: NextFetchEvent) {
+  const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith("/api") || pathname.startsWith("/trpc")) {
+    return NextResponse.next();
+  }
+
   const authMode = getAuthMode({
     APP_ENV: process.env.APP_ENV,
     DEMO_MODE: process.env.DEMO_MODE,
@@ -20,11 +56,48 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   });
-  if (authMode === "local-demo") return NextResponse.next();
-  if (authMode === "unavailable") {
-    if (isPublicRoute(request)) return NextResponse.next();
-    return NextResponse.redirect(new URL("/sign-in", request.url));
+
+  if (authMode === "local-demo") {
+    const hasDemoParam = request.nextUrl.searchParams.get("demo") === "true";
+    const hasDemoCookie = Boolean(request.cookies.get("voicehire_demo_session")?.value);
+    const isAuthenticated = hasDemoCookie || hasDemoParam;
+    let onboardingComplete = false;
+    if (isAuthenticated) {
+      onboardingComplete = await checkOnboardingComplete();
+    }
+    const redirectPath = resolveFlowRedirect({
+      pathname,
+      search,
+      isAuthenticated,
+      onboardingComplete,
+    });
+    if (redirectPath) {
+      const response = NextResponse.redirect(new URL(redirectPath, request.url));
+      if (hasDemoParam && !hasDemoCookie) {
+        response.cookies.set("voicehire_demo_session", "1", { path: "/", sameSite: "lax" });
+      }
+      return response;
+    }
+    const response = NextResponse.next();
+    if (hasDemoParam && !hasDemoCookie) {
+      response.cookies.set("voicehire_demo_session", "1", { path: "/", sameSite: "lax" });
+    }
+    return response;
   }
+
+  if (authMode === "unavailable") {
+    const redirectPath = resolveFlowRedirect({
+      pathname,
+      search,
+      isAuthenticated: false,
+      onboardingComplete: false,
+    });
+    if (redirectPath) {
+      return NextResponse.redirect(new URL(redirectPath, request.url));
+    }
+    return NextResponse.next();
+  }
+
   return clerkHandler(request, event);
 }
 
