@@ -1,0 +1,14 @@
+{
+  "name": "@voicehire/prompts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Version-controlled prompt configurations for VoiceHire AI agents",
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate-prompts.js"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0",
+    "ajv": "^8.12.0"
+  }
+}

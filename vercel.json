@@ -1,0 +1,6 @@
+{
+  "buildCommand": "pnpm --filter @voicehire/web build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile"
+}
