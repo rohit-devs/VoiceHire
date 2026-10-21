@@ -1,3 +1,5 @@
+import { apiInterviewService } from "@/lib/services/apiInterviewService";
+
 export interface FinalSpeechSegment {
   messageId: string;
   text: string;
@@ -158,15 +160,19 @@ export class BrowserSpeechRecognitionProvider implements STTProvider {
   }
 }
 
-export class DeepgramSpeechRecognitionProvider implements STTProvider {
-  private readonly fallback: BrowserSpeechRecognitionProvider;
-  private socket: WebSocket | null = null;
+export class RecordedAudioSpeechRecognitionProvider implements STTProvider {
+  private readonly browser: BrowserSpeechRecognitionProvider;
   private recorder: MediaRecorder | null = null;
-  private mediaStream: MediaStream | null = null;
+  private stream: MediaStream | null = null;
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private frame = 0;
+  private timeout: number | null = null;
+  private chunks: Blob[] = [];
   private active = false;
-  private fallbackActive = false;
-  private speechStartedAt = 0;
-  private finalParts: string[] = [];
+  private heardSpeech = false;
+  private startedAt = 0;
+  private lastSpeechAt = 0;
   private onFinal: ((segment: FinalSpeechSegment) => void) | null = null;
   private onError: ((message: string) => void) | null = null;
   private onEnded: (() => void) | null = null;
@@ -174,19 +180,18 @@ export class DeepgramSpeechRecognitionProvider implements STTProvider {
 
   constructor(
     private readonly sessionId: string,
-    private readonly authToken: string | null,
-    private readonly enabled: boolean,
+    private readonly providerName: string,
     language: "en" | "es" | "fr" = "en",
   ) {
-    this.fallback = new BrowserSpeechRecognitionProvider(language);
+    this.browser = new BrowserSpeechRecognitionProvider(language);
   }
 
   get supported(): boolean {
-    return this.enabled
-      ? typeof window !== "undefined" &&
-          "MediaRecorder" in window &&
-          Boolean(navigator.mediaDevices?.getUserMedia)
-      : this.fallback.supported;
+    if (this.providerName === "browser") return this.browser.supported;
+    return typeof window !== "undefined" &&
+      "MediaRecorder" in window &&
+      "AudioContext" in window &&
+      Boolean(navigator.mediaDevices?.getUserMedia);
   }
 
   start(
@@ -196,47 +201,34 @@ export class DeepgramSpeechRecognitionProvider implements STTProvider {
     onInterim?: (text: string) => void,
   ): void {
     this.stop();
+    if (this.providerName === "browser") {
+      this.browser.start(onFinal, onError, onEnded, onInterim);
+      return;
+    }
+    if (!this.supported) {
+      onError("Audio recording is not supported in this browser. Use text input instead.");
+      return;
+    }
     this.active = true;
     this.onFinal = onFinal;
     this.onError = onError;
     this.onEnded = onEnded ?? null;
     this.onInterim = onInterim ?? null;
-
-    if (!this.enabled || !this.supported) {
-      this.startFallback();
-      return;
-    }
-
-    const pageUrl = new URL(window.location.href);
-    const socketUrl = new URL(
-      `/api/interviews/sessions/${encodeURIComponent(this.sessionId)}/stt`,
-      pageUrl.origin,
-    );
-    socketUrl.protocol = pageUrl.protocol === "https:" ? "wss:" : "ws:";
-    if (this.authToken) socketUrl.searchParams.set("token", this.authToken);
-
-    const socket = new WebSocket(socketUrl.toString());
-    this.socket = socket;
-    socket.onopen = () => {
-      void this.startRecording();
-    };
-    socket.onmessage = (event) => this.handleMessage(event.data);
-    socket.onerror = () => this.startFallback();
-    socket.onclose = () => {
-      if (this.active && !this.fallbackActive) this.startFallback();
-    };
+    this.heardSpeech = false;
+    this.chunks = [];
+    void this.beginRecording();
   }
 
-  private async startRecording(): Promise<void> {
+  private async beginRecording(): Promise<void> {
     try {
-      if (!this.active) return;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!this.active) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
-      this.mediaStream = stream;
-      this.speechStartedAt = Date.now();
+      this.stream = stream;
+      this.startedAt = Date.now();
+      this.lastSpeechAt = this.startedAt;
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : undefined;
@@ -244,100 +236,151 @@ export class DeepgramSpeechRecognitionProvider implements STTProvider {
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
       this.recorder = recorder;
+      this.chunks = [];
       recorder.ondataavailable = (event) => {
-        const socket = this.socket;
-        if (!event.data.size || socket?.readyState !== WebSocket.OPEN) return;
-        void event.data.arrayBuffer().then((audio) => {
-          if (socket.readyState === WebSocket.OPEN) socket.send(audio);
-        }).catch(() => this.startFallback());
+        if (event.data.size) this.chunks.push(event.data);
       };
+      recorder.onerror = () => this.fail("Audio recording failed. Use text input instead.");
+      recorder.onstop = () => void this.transcribeRecording(recorder.mimeType);
       recorder.start(250);
-    } catch {
-      this.startFallback();
+
+      this.audioContext = new AudioContext();
+      const source = this.audioContext.createMediaStreamSource(stream);
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 512;
+      source.connect(this.analyser);
+      this.detectSpeech();
+      this.timeout = window.setTimeout(() => {
+        if (!this.heardSpeech) {
+          this.fail("No speech was detected. Try again or use text input.");
+        } else {
+          this.finishRecording();
+        }
+      }, 45_000);
+    } catch (cause) {
+      this.fail(
+        cause instanceof Error
+          ? `Microphone recording failed: ${cause.message}`
+          : "Microphone recording failed. Use text input instead.",
+      );
     }
   }
 
-  private handleMessage(raw: string): void {
-    let message: {
-      type?: string;
-      status?: string;
-      message?: string;
-      text?: string;
-      is_final?: boolean;
-      speech_final?: boolean;
-      timestamp_ms?: number;
-    };
-    try {
-      message = JSON.parse(raw) as typeof message;
-    } catch {
-      this.startFallback();
-      return;
-    }
-    if (message.type === "provider") {
-      if (message.status !== "ok") this.startFallback();
-      return;
-    }
-    if (message.type !== "transcript" || !message.text) return;
-    if (!message.is_final) {
-      this.onInterim?.([...this.finalParts, message.text].join(" "));
-      return;
-    }
-    this.finalParts.push(message.text);
-    const fullText = this.finalParts.join(" ").trim();
-    this.onInterim?.(fullText);
-    if (!message.speech_final) return;
-
-    this.onInterim?.("");
-    this.finalParts = [];
-    this.onFinal?.({
-      messageId: createMessageId(),
-      text: fullText,
-      timestampMs: message.timestamp_ms ?? Date.now(),
-      durationMs: this.speechStartedAt
-        ? Math.max(1, Date.now() - this.speechStartedAt)
-        : null,
-      language: "en",
-    });
-  }
-
-  private startFallback(): void {
-    if (!this.active || this.fallbackActive) return;
-    this.fallbackActive = true;
-    this.stopDeepgram();
-    this.fallback.start(
-      (segment) => this.onFinal?.(segment),
-      (message) => this.onError?.(message),
-      () => this.onEnded?.(),
-      (text) => this.onInterim?.(text),
+  private detectSpeech(): void {
+    const analyser = this.analyser;
+    if (!this.active || !analyser) return;
+    const samples = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(samples);
+    const rms = Math.sqrt(
+      samples.reduce((sum, sample) => sum + ((sample - 128) / 128) ** 2, 0) /
+        samples.length,
     );
+    const now = Date.now();
+    if (rms > 0.035) {
+      this.heardSpeech = true;
+      this.lastSpeechAt = now;
+    } else if (this.heardSpeech && now - this.lastSpeechAt >= 1_200) {
+      this.finishRecording();
+      return;
+    }
+    this.frame = window.requestAnimationFrame(() => this.detectSpeech());
   }
 
-  private stopDeepgram(): void {
+  private finishRecording(): void {
+    if (this.timeout !== null) window.clearTimeout(this.timeout);
+    this.timeout = null;
+    if (this.frame) window.cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    if (this.recorder?.state === "recording") this.recorder.stop();
+  }
+
+  private async transcribeRecording(contentType: string): Promise<void> {
+    const blob = new Blob(this.chunks, { type: contentType || "audio/webm" });
+    this.chunks = [];
+    this.recorder = null;
+    this.releaseMedia();
+    if (!blob.size) {
+      this.fail("No audio was recorded. Try again or use text input.");
+      return;
+    }
+    try {
+      const result = await apiInterviewService.transcribeAudio(this.sessionId, blob);
+      if (!this.active) return;
+      const text = result.text.trim();
+      if (!text) {
+        this.fail("No speech was recognized. Try again or use text input.");
+        return;
+      }
+      const endedAt = Date.now();
+      this.active = false;
+      this.onInterim?.("");
+      this.onFinal?.({
+        messageId: createMessageId(),
+        text,
+        timestampMs: endedAt,
+        durationMs: Math.max(1, endedAt - this.startedAt),
+        language: "en",
+      });
+      this.onEnded?.();
+      this.clearCallbacks();
+    } catch (cause) {
+      this.fail(cause instanceof Error ? cause.message : "Speech transcription failed.");
+    }
+  }
+
+  private fail(message: string): void {
+    if (!this.active && !this.onError) return;
+    this.active = false;
     const recorder = this.recorder;
     this.recorder = null;
-    if (recorder?.state === "recording") recorder.stop();
-    this.mediaStream?.getTracks().forEach((track) => track.stop());
-    this.mediaStream = null;
-    const socket = this.socket;
-    this.socket = null;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "stop" }));
-      socket.close();
-    } else if (socket && socket.readyState < WebSocket.CLOSING) {
-      socket.close();
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state === "recording") recorder.stop();
     }
+    this.releaseMedia();
+    this.onInterim?.("");
+    this.onError?.(message);
+    this.onEnded?.();
+    this.clearCallbacks();
   }
 
-  stop(): void {
-    this.active = false;
-    this.fallbackActive = false;
-    this.fallback.stop();
-    this.stopDeepgram();
-    this.finalParts = [];
+  private releaseMedia(): void {
+    if (this.timeout !== null) window.clearTimeout(this.timeout);
+    this.timeout = null;
+    if (this.frame) window.cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.stream?.getTracks().forEach((track) => track.stop());
+    this.stream = null;
+    this.analyser = null;
+    if (this.audioContext && this.audioContext.state !== "closed") {
+      void this.audioContext.close();
+    }
+    this.audioContext = null;
+  }
+
+  private clearCallbacks(): void {
     this.onFinal = null;
     this.onError = null;
     this.onEnded = null;
     this.onInterim = null;
+  }
+
+  stop(): void {
+    this.active = false;
+    this.browser.stop();
+    const recorder = this.recorder;
+    this.recorder = null;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state === "recording") recorder.stop();
+    }
+    this.chunks = [];
+    this.releaseMedia();
+    this.clearCallbacks();
   }
 }
 

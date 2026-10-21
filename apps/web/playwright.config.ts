@@ -31,6 +31,7 @@ export default defineConfig({
         CLERK_JWT_JWKS_URL: "",
         GROQ_API_KEY: "",
         DEEPGRAM_API_KEY: "",
+        STT_PROVIDER: "browser",
         AGORA_APP_ID: "",
         AGORA_APP_CERTIFICATE: "",
       },

@@ -267,4 +267,4 @@ End every task with this, using real output:
 8. **Final check** on a phone against the live URL.
 
 Update `docs/IMPLEMENTATION_CHECKLIST.md` at the end of each phase with what was done,
-what was verified, and what remains.
+what was verified, and what remains

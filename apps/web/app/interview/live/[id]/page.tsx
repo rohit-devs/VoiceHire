@@ -12,7 +12,7 @@ import { VoiceOrb } from "@/components/interview/VoiceOrb";
 import { Loader2, ArrowRight, PhoneOff, Mic, MicOff } from "lucide-react";
 import { Button, Card, Textarea } from "@/components/ui/primitives";
 import {
-  DeepgramSpeechRecognitionProvider,
+  RecordedAudioSpeechRecognitionProvider,
   BrowserSpeechSynthesisProvider,
   type FinalSpeechSegment,
   type STTProvider,
@@ -51,6 +51,7 @@ export default function LiveInterviewPage() {
   const [useRealVoice, setUseRealVoice] = useState(true);
   const [secureContext, setSecureContext] = useState(true);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [sttProviderName, setSTTProviderName] = useState<string | null>(null);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechRestartSignal, setSpeechRestartSignal] = useState(0);
@@ -107,6 +108,22 @@ export default function LiveInterviewPage() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void interviewService.getSTTProvider().then((providerName) => {
+      if (active) setSTTProviderName(providerName);
+    }).catch((cause: unknown) => {
+      if (active) {
+        setSpeechError(
+          cause instanceof Error
+            ? cause.message
+            : "Speech recognition provider status is unavailable.",
+        );
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
   // Initialize the persisted session.
   useEffect(() => {
     interviewService.getInterview(interviewId)
@@ -156,27 +173,24 @@ export default function LiveInterviewPage() {
   }, [wsMetrics]);
 
   useEffect(() => {
-    const recognition = new DeepgramSpeechRecognitionProvider(
-      sessionId,
-      authToken,
-      !isDemo,
-      "en",
-    );
+    const recognition = sttProviderName
+      ? new RecordedAudioSpeechRecognitionProvider(sessionId, sttProviderName, "en")
+      : null;
     const synthesis = new BrowserSpeechSynthesisProvider();
     speechRecognitionRef.current = recognition;
     speechSynthesisRef.current = synthesis;
-    setSpeechSupported(recognition.supported);
+    setSpeechSupported(recognition?.supported ?? false);
     const updateVoices = () => setSpeechVoices(synthesis.voices);
     updateVoices();
     if (synthesis.supported) window.speechSynthesis.addEventListener("voiceschanged", updateVoices);
     return () => {
-      recognition.stop();
+      recognition?.stop();
       synthesis.stop();
       if (synthesis.supported) window.speechSynthesis.removeEventListener("voiceschanged", updateVoices);
       speechRecognitionRef.current = null;
       speechSynthesisRef.current = null;
     };
-  }, [authToken, isDemo, sessionId]);
+  }, [sttProviderName, sessionId]);
 
   // Auto-scroll transcript
   useEffect(() => {
