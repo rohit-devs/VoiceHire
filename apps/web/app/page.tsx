@@ -11,6 +11,7 @@ import {
   Play,
   ShieldCheck,
 } from "lucide-react";
+import { getAuthMode } from "@/lib/auth-mode";
 
 export const metadata: Metadata = {
   title: "VoiceHire — AI Interviewer & Communication Coach",
@@ -105,6 +106,9 @@ const FEATURE_LIST = [
 /* -------------------------------------------------------------------------- */
 
 export default function HomePage() {
+  const authMode = getAuthMode();
+  const isDemo = authMode === "local-demo";
+
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-neutral-200 antialiased">
       {/* Page-local styles — system fonts only, reduced-motion safe */}
@@ -197,16 +201,32 @@ export default function HomePage() {
             </a>
           </nav>
 
-          <Link
-            href="/sign-up"
-            className="vh-focus group inline-flex items-center gap-2 border border-[#e8321e] px-5 py-2.5 text-xs font-bold vh-label text-[#e8321e] transition hover:bg-[#e8321e] hover:text-white"
-          >
-            Create account
-            <ArrowUpRight
-              aria-hidden
-              className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-            />
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/sign-in"
+              className="vh-focus text-xs font-bold vh-label text-neutral-400 transition hover:text-white"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/sign-up"
+              className="vh-focus group inline-flex items-center gap-2 border border-[#e8321e] px-4 py-2 text-xs font-bold vh-label text-[#e8321e] transition hover:bg-[#e8321e] hover:text-white"
+            >
+              Create account
+              <ArrowUpRight
+                aria-hidden
+                className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+              />
+            </Link>
+            {isDemo && (
+              <Link
+                href="/interview/new?demo=true"
+                className="vh-focus inline-flex items-center gap-1.5 border border-amber-400/40 bg-amber-400/10 px-3.5 py-2 text-xs font-bold vh-label text-amber-300 transition hover:bg-amber-400 hover:text-black"
+              >
+                Try demo interview
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
@@ -242,6 +262,24 @@ export default function HomePage() {
                   className="h-4 w-4 transition-transform group-hover:translate-x-1"
                 />
               </Link>
+              <Link
+                href="/sign-in"
+                className="vh-focus vh-label border-b border-neutral-600 pb-1 text-xs text-neutral-300 transition hover:border-[#e8321e] hover:text-white"
+              >
+                Sign in
+              </Link>
+              {isDemo && (
+                <Link
+                  href="/interview/new?demo=true"
+                  className="vh-focus group inline-flex items-center gap-2 border border-amber-400/50 bg-amber-400/10 px-5 py-3.5 text-xs font-bold vh-label text-amber-300 transition hover:bg-amber-400 hover:text-black"
+                >
+                  Try demo interview
+                  <ArrowRight
+                    aria-hidden
+                    className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+                  />
+                </Link>
+              )}
               <a
                 href="#method"
                 className="vh-focus vh-label border-b border-neutral-600 pb-1 text-xs text-neutral-300 transition hover:border-[#e8321e] hover:text-white"
@@ -321,8 +359,8 @@ export default function HomePage() {
                 The practice<span className="text-[#e8321e]">.</span>
               </h2>
             </div>
-            <Link
-              href="/sign-in"
+            <a
+              href="#skills"
               className="vh-focus group inline-flex items-center gap-2 text-xs font-bold vh-label text-neutral-400 transition hover:text-white"
             >
               Explore capabilities
@@ -330,7 +368,7 @@ export default function HomePage() {
                 aria-hidden
                 className="h-4 w-4 text-[#e8321e] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
               />
-            </Link>
+            </a>
           </div>
 
           <div className="grid gap-5 md:grid-cols-3">
@@ -527,6 +565,18 @@ export default function HomePage() {
               >
                 Sign in
               </Link>
+              {isDemo && (
+                <Link
+                  href="/interview/new?demo=true"
+                  className="vh-focus group inline-flex items-center gap-2 border border-amber-400/50 bg-amber-400/10 px-6 py-4 text-xs font-bold vh-label text-amber-300 transition hover:bg-amber-400 hover:text-black"
+                >
+                  Try demo interview
+                  <ArrowRight
+                    aria-hidden
+                    className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+                  />
+                </Link>
+              )}
             </div>
             <p className="mt-6 flex items-center gap-2 text-xs text-neutral-500">
               <Check aria-hidden className="h-4 w-4 text-[#e8321e]" />
