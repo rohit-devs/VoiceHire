@@ -9,10 +9,14 @@ export const dynamic = "force-dynamic";
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ redirect_url?: string }> | { redirect_url?: string };
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedParams = searchParams ? await searchParams : undefined;
-  const redirectTarget = safeRedirectTarget(resolvedParams?.redirect_url, ROUTES.dashboard);
+  const rawRedirect =
+    typeof resolvedParams?.redirect_url === "string"
+      ? resolvedParams.redirect_url
+      : undefined;
+  const redirectTarget = safeRedirectTarget(rawRedirect, ROUTES.dashboard);
   const authMode = getAuthMode();
 
   if (authMode !== "clerk") {
@@ -20,7 +24,7 @@ export default async function SignInPage({
       <AuthFallback
         mode={authMode}
         action="sign-in"
-        redirectUrl={redirectTarget}
+        redirectUrl={rawRedirect ? redirectTarget : undefined}
       />
     );
   }
@@ -77,4 +81,4 @@ export default async function SignInPage({
       </div>
     </main>
   );
-}
+}

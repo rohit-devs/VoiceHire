@@ -57,33 +57,7 @@ export default async function middleware(request: NextRequest, event: NextFetchE
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   });
 
-  if (authMode === "local-demo") {
-    const hasDemoParam = request.nextUrl.searchParams.get("demo") === "true";
-    const hasDemoCookie = Boolean(request.cookies.get("voicehire_demo_session")?.value);
-    const isAuthenticated = hasDemoCookie || hasDemoParam;
-    let onboardingComplete = false;
-    if (isAuthenticated) {
-      onboardingComplete = await checkOnboardingComplete();
-    }
-    const redirectPath = resolveFlowRedirect({
-      pathname,
-      search,
-      isAuthenticated,
-      onboardingComplete,
-    });
-    if (redirectPath) {
-      const response = NextResponse.redirect(new URL(redirectPath, request.url));
-      if (hasDemoParam && !hasDemoCookie) {
-        response.cookies.set("voicehire_demo_session", "1", { path: "/", sameSite: "lax" });
-      }
-      return response;
-    }
-    const response = NextResponse.next();
-    if (hasDemoParam && !hasDemoCookie) {
-      response.cookies.set("voicehire_demo_session", "1", { path: "/", sameSite: "lax" });
-    }
-    return response;
-  }
+  if (authMode === "local-demo") return NextResponse.next();
 
   if (authMode === "unavailable") {
     const redirectPath = resolveFlowRedirect({

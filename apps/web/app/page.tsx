@@ -110,7 +110,7 @@ export default function HomePage() {
   const isDemo = authMode === "local-demo";
 
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-neutral-200 antialiased">
+    <main className="min-h-screen overflow-x-hidden bg-[#0a0a0a] text-neutral-200 antialiased">
       {/* Page-local styles — system fonts only, reduced-motion safe */}
       <style>{`
         .vh-display {
@@ -201,16 +201,16 @@ export default function HomePage() {
             </a>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/sign-in"
-              className="vh-focus text-xs font-bold vh-label text-neutral-400 transition hover:text-white"
+              className="vh-focus hidden text-xs font-bold vh-label text-neutral-400 transition hover:text-white sm:inline-block"
             >
               Sign in
             </Link>
             <Link
               href="/sign-up"
-              className="vh-focus group inline-flex items-center gap-2 border border-[#e8321e] px-4 py-2 text-xs font-bold vh-label text-[#e8321e] transition hover:bg-[#e8321e] hover:text-white"
+              className="vh-focus group inline-flex items-center gap-1.5 sm:gap-2 border border-[#e8321e] px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold vh-label text-[#e8321e] transition hover:bg-[#e8321e] hover:text-white"
             >
               Create account
               <ArrowUpRight
@@ -221,7 +221,7 @@ export default function HomePage() {
             {isDemo && (
               <Link
                 href="/interview/new?demo=true"
-                className="vh-focus inline-flex items-center gap-1.5 border border-amber-400/40 bg-amber-400/10 px-3.5 py-2 text-xs font-bold vh-label text-amber-300 transition hover:bg-amber-400 hover:text-black"
+                className="vh-focus hidden md:inline-flex items-center gap-1.5 border border-amber-400/40 bg-amber-400/10 px-3.5 py-2 text-xs font-bold vh-label text-amber-300 transition hover:bg-amber-400 hover:text-black"
               >
                 Try demo interview
               </Link>

@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import type { AuthMode } from "@/lib/auth-mode";
 import { ROUTES, safeRedirectTarget } from "@/lib/auth-mode";
@@ -14,13 +12,7 @@ type AuthFallbackProps = {
 export default function AuthFallback({ mode, action, redirectUrl }: AuthFallbackProps) {
   const localDemo = mode === "local-demo";
   const isSignUp = action === "sign-up";
-  const continueTarget = isSignUp
-    ? ROUTES.onboarding
-    : safeRedirectTarget(redirectUrl, ROUTES.dashboard);
-
-  const handleDemoSignIn = () => {
-    document.cookie = "voicehire_demo_session=1; path=/; max-age=86400; SameSite=Lax";
-  };
+  const continueTarget = safeRedirectTarget(redirectUrl, ROUTES.onboarding);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#0a0a0f] px-4 py-10 text-white">
@@ -45,7 +37,6 @@ export default function AuthFallback({ mode, action, redirectUrl }: AuthFallback
         {localDemo && (
           <ButtonLink
             href={continueTarget}
-            onClick={handleDemoSignIn}
             className="w-full"
           >
             Continue as local demo user
