@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default function SignUpPage() {
   const authMode = getAuthMode();
-  if (authMode !== "clerk") return <AuthFallback mode={authMode} action="sign-up" />;
+  if (authMode !== "clerk") {
+    return <AuthFallback mode={authMode} action="sign-up" redirectUrl="/onboarding" />;
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-4 py-12">
@@ -29,7 +31,8 @@ export default function SignUpPage() {
           path="/sign-up"
           routing="path"
           signInUrl="/sign-in"
-          afterSignUpUrl="/onboarding"
+          fallbackRedirectUrl="/onboarding"
+          forceRedirectUrl="/onboarding"
           appearance={{
             variables: {
               colorPrimary: "#e8321e",
@@ -50,7 +53,15 @@ export default function SignUpPage() {
             },
           }}
         />
+        <div className="mt-4 text-center">
+          <Link
+            href="/sign-in"
+            className="text-xs text-neutral-400 hover:text-white underline underline-offset-4"
+          >
+            Already have an account? Sign in
+          </Link>
+        </div>
       </div>
     </main>
   );
-}
+}

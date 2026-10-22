@@ -1,14 +1,29 @@
 import { SignIn } from "@clerk/nextjs";
 import AuthFallback from "@/components/AuthFallback";
-import { getAuthMode } from "@/lib/auth-mode";
+import { ROUTES, getAuthMode, safeRedirectTarget } from "@/lib/auth-mode";
 import Link from "next/link";
 import { Mic } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ redirect_url?: string }> | { redirect_url?: string };
+}) {
+  const resolvedParams = searchParams ? await searchParams : undefined;
+  const redirectTarget = safeRedirectTarget(resolvedParams?.redirect_url, ROUTES.dashboard);
   const authMode = getAuthMode();
-  if (authMode !== "clerk") return <AuthFallback mode={authMode} action="sign-in" />;
+
+  if (authMode !== "clerk") {
+    return (
+      <AuthFallback
+        mode={authMode}
+        action="sign-in"
+        redirectUrl={redirectTarget}
+      />
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-4 py-12">
@@ -29,7 +44,8 @@ export default function SignInPage() {
           path="/sign-in"
           routing="path"
           signUpUrl="/sign-up"
-          afterSignInUrl="/dashboard"
+          fallbackRedirectUrl={redirectTarget}
+          forceRedirectUrl={redirectTarget}
           appearance={{
             variables: {
               colorPrimary: "#e8321e",
@@ -50,7 +66,15 @@ export default function SignInPage() {
             },
           }}
         />
+        <div className="mt-4 text-center">
+          <Link
+            href="/sign-up"
+            className="text-xs text-neutral-400 hover:text-white underline underline-offset-4"
+          >
+            Don&apos;t have an account? Create an account
+          </Link>
+        </div>
       </div>
     </main>
   );
-}
+}
