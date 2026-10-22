@@ -5,9 +5,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from app.providers import ChatMessage, DemoProvider, GroqProvider
+from app.providers import ChatMessage, DemoProvider, GroqProvider, OllamaProvider
 
-Provider = DemoProvider | GroqProvider
+Provider = DemoProvider | GroqProvider | OllamaProvider
 
 
 @dataclass(frozen=True)
@@ -40,10 +40,13 @@ class LegacyProviderAdapter:
             purpose=self.purpose,
             max_tokens=max_tokens,
         )
+        is_local = self.provider.name == "ollama"
         return ProviderCompletion(
             text=text,
-            prompt_tokens=math.ceil((len(system_prompt) + len(user_content)) / 4),
-            completion_tokens=math.ceil(len(text) / 4),
+            prompt_tokens=0 if is_local else math.ceil(
+                (len(system_prompt) + len(user_content)) / 4
+            ),
+            completion_tokens=0 if is_local else math.ceil(len(text) / 4),
             provider=self.provider.name,
             model=self.provider.model_for(self.purpose),
         )

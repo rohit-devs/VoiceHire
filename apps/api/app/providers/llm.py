@@ -1,7 +1,9 @@
-"""LLM providers: Groq (OpenAI-compatible API) and a clearly labelled demo fallback.
+"""LLM providers: Groq (OpenAI-compatible API), local Ollama, and a clearly labelled demo fallback.
 
 Env vars:
-  LLM_PROVIDER      auto | groq | demo        (default: auto)
+  LLM_PROVIDER      auto | groq | ollama | demo        (default: auto)
+  OLLAMA_BASE_URL   http://localhost:11434
+  OLLAMA_MODEL      llama3.2:1b
   GROQ_API_KEY      key from console.groq.com
   GROQ_BASE_URL     default https://api.groq.com/openai/v1
   GROQ_MODEL_LIVE   fast model for live interviewer turns
@@ -20,6 +22,8 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 import httpx
+
+from app.config import settings
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL_LIVE = "llama-3.1-8b-instant"
@@ -149,6 +153,80 @@ class GroqProvider:
         raise last_error
 
 
+class OllamaProvider:
+    """Local Ollama provider. Requests stay on the configured Ollama server."""
+
+    name = "ollama"
+    simulated = False
+
+    def __init__(
+        self,
+        *,
+        base_url: str = "http://localhost:11434",
+        model: str = "llama3.2:1b",
+        timeout: float = 120.0,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model_live = model
+        self.model_report = model
+        self.timeout = timeout
+
+    def model_for(self, purpose: str) -> str:
+        return self.model_report if purpose == "report" else self.model_live
+
+    async def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        purpose: str = "live",
+        temperature: float = 0.4,
+        max_tokens: int = 600,
+    ) -> str:
+        payload = {
+            "model": self.model_for(purpose),
+            "messages": [
+                {"role": message.role, "content": message.content}
+                for message in messages
+            ],
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            answer = data.get("message", {}).get("content", "")
+            if not isinstance(answer, str) or not answer.strip():
+                raise ProviderError(
+                    "Ollama returned an empty or invalid response."
+                )
+            return answer.strip()
+        except ProviderError:
+            raise
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            raise ProviderError(
+                f"Ollama HTTP error: {status}",
+                status=status,
+                retryable=status in RETRYABLE_STATUS,
+            ) from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ProviderError(
+                "Ollama is unavailable. Check that Ollama is running "
+                "and the requested model is installed.",
+                retryable=True,
+            ) from exc
+
+
 class DemoProvider:
     """No network, no keys. Output is always labelled as simulated."""
 
@@ -199,17 +277,35 @@ class DemoProvider:
         )
 
 
-def get_llm_provider() -> "GroqProvider | DemoProvider":
-    choice = os.getenv("LLM_PROVIDER", "auto").strip().lower()
-    key = os.getenv("GROQ_API_KEY", "").strip()
-
-    if choice == "demo" or (choice == "auto" and (env_flag("DEMO_MODE") or not key)):
+def get_llm_provider() -> GroqProvider | OllamaProvider | DemoProvider:
+    choice = os.getenv("LLM_PROVIDER", settings.LLM_PROVIDER).strip().lower()
+    key = os.getenv("GROQ_API_KEY", settings.GROQ_API_KEY).strip()
+    if choice == "demo":
         return DemoProvider()
+    if choice == "ollama":
+        return OllamaProvider(
+            base_url=os.getenv(
+                "OLLAMA_BASE_URL", settings.OLLAMA_BASE_URL
+            ),
+            model=os.getenv(
+                "OLLAMA_MODEL", settings.OLLAMA_MODEL
+            ),
+        )
+    if choice == "auto" and (
+        env_flag("DEMO_MODE") or settings.DEMO_MODE or not key
+    ):
+        return DemoProvider()
+    if choice not in {"auto", "groq"}:
+        raise ProviderError(
+            "Invalid LLM_PROVIDER. Choose auto, groq, ollama, or demo."
+        )
     if not key:
-        raise ProviderError("LLM_PROVIDER=groq but GROQ_API_KEY is not set")
+        raise ProviderError(
+            "LLM_PROVIDER=groq but GROQ_API_KEY is not set."
+        )
     return GroqProvider(
         key,
-        base_url=os.getenv("GROQ_BASE_URL") or None,
-        model_live=os.getenv("GROQ_MODEL_LIVE") or None,
-        model_report=os.getenv("GROQ_MODEL_REPORT") or None,
+        base_url=os.getenv("GROQ_BASE_URL") or settings.GROQ_BASE_URL,
+        model_live=os.getenv("GROQ_MODEL_LIVE") or settings.GROQ_FAST_MODEL,
+        model_report=os.getenv("GROQ_MODEL_REPORT") or settings.GROQ_STRONG_MODEL,
     )

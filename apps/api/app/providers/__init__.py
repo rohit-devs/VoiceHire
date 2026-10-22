@@ -12,6 +12,7 @@ from .llm import (
     ChatMessage,
     DemoProvider,
     GroqProvider,
+    OllamaProvider,
     ProviderError,
     get_llm_provider,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "ChatMessage",
     "DemoProvider",
     "GroqProvider",
+    "OllamaProvider",
     "ProviderError",
     "get_llm_provider",
     "BrowserSTT",

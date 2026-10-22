@@ -3,6 +3,7 @@ import asyncio
 import httpx
 import pytest
 
+from app.config import settings
 from app.providers import (
     BrowserSTT,
     ChatMessage,
@@ -10,11 +11,13 @@ from app.providers import (
     DemoSTT,
     DeepgramProvider,
     GroqProvider,
+    OllamaProvider,
     ProviderError,
     get_llm_provider,
     get_stt_provider,
     provider_health,
 )
+from app.providers.legacy_adapter import LegacyProviderAdapter
 
 MESSAGES = [ChatMessage("user", "Ask me one question.")]
 
@@ -28,6 +31,10 @@ def _clear(monkeypatch):
         "DEMO_MODE",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "auto")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    monkeypatch.setattr(settings, "DEEPGRAM_API_KEY", "")
+    monkeypatch.setattr(settings, "DEMO_MODE", False)
 
 
 def test_llm_defaults_to_demo_without_key(monkeypatch):
@@ -162,3 +169,39 @@ def test_deepgram_error_is_wrapped():
     )
     with pytest.raises(ProviderError):
         asyncio.run(provider.transcribe(b"audio-bytes"))
+
+
+def test_explicit_ollama_provider(monkeypatch):
+    _clear(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    provider = get_llm_provider()
+    assert isinstance(provider, OllamaProvider)
+    assert provider.name == "ollama"
+    assert provider.simulated is False
+
+
+def test_health_reports_ollama_when_configured(monkeypatch):
+    _clear(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    health = provider_health()
+    assert health["llm"]["status"] == "ok"
+    assert health["llm"]["using"] == "ollama"
+
+
+def test_legacy_adapter_zero_billable_tokens_for_ollama():
+    class DummyOllama(OllamaProvider):
+        async def complete(self, messages, **kwargs):
+            return "Local completion text"
+
+    adapter = LegacyProviderAdapter(DummyOllama(), purpose="live")
+    result = asyncio.run(
+        adapter.complete(
+            session_id="s1",
+            system_prompt="sys",
+            user_content="user",
+            max_tokens=100,
+        )
+    )
+    assert result.prompt_tokens == 0
+    assert result.completion_tokens == 0
+    assert result.provider == "ollama"

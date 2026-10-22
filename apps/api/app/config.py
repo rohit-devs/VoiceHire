@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # ── Database ──
     DATABASE_URL: str = "sqlite+aiosqlite:///./voicehire_local.db"
 
+    # ── LLM provider ──
+    LLM_PROVIDER: str = "auto"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2:1b"
+
     # ── AI ──
     GROQ_API_KEY: str = ""
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"

@@ -422,3 +422,26 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 50 passed, 40 warnings in 44.91s. |
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Exit 0; all 5 browser tests passed in 4.3 minutes. |
 | `git diff --check` | Exit 0. |
+
+## Local Ollama provider integration
+
+- Added `OllamaProvider` to `apps/api/app/providers/llm.py` using local `POST /api/chat` with configurable base URL (`http://localhost:11434`), model (`llama3.2:1b`), and timeout.
+- Added `LLM_PROVIDER`, `OLLAMA_BASE_URL`, and `OLLAMA_MODEL` to `Settings` in `apps/api/app/config.py` and documented in `.env.example`.
+- Exported `OllamaProvider` from `app.providers`.
+- Updated `LegacyProviderAdapter` to set `prompt_tokens=0` and `completion_tokens=0` for local Ollama inference, ensuring local turns are treated as 0 billable tokens.
+- Added unit tests covering explicit Ollama provider selection, provider health status reporting `ollama` as `ok`, and zero-token usage in the legacy adapter.
+- Verified live local completion with running Ollama instance (`llama3.2:1b`) returning valid responses.
+
+### Final verification
+
+| Command / check | Result |
+|---|---|
+| `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
+| `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 5 files and 39 tests passed. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 67 passed, 45 warnings in 16.16s. |
+| `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 5 Playwright tests passed in 1.7m. |
+| Live Ollama test (`http://localhost:11434`, `llama3.2:1b`) | Verified; HTTP 200 and completion generated. |
+| `git diff --check` | Exit 0. |
+
