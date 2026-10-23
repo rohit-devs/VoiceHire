@@ -33,10 +33,11 @@ WEAKEST = {
 
 
 class ValidEvaluationProvider:
-    def __init__(self, *, first_response: str | None = None):
+    def __init__(self, *, first_response: str | None = None, name: str = "validevaluationprovider"):
         self.calls = 0
         self.first_response = first_response
         self.user_contents: list[str] = []
+        self.name = name
 
     async def complete(self, *, session_id, system_prompt, user_content, max_tokens):
         self.calls += 1
@@ -87,16 +88,20 @@ class ValidEvaluationProvider:
                 for index in range(7)
             ],
         }
+        if self.name == "ollama":
+            return Completion(json.dumps(output), 0, 0, provider="ollama", model="llama3.2:1b")
         return Completion(json.dumps(output), 420, 310)
 
 
 class InvalidEvaluationProvider:
-    def __init__(self):
+    def __init__(self, name: str = "groq"):
         self.calls = 0
+        self.name = name
 
     async def complete(self, **_kwargs):
         self.calls += 1
-        return Completion("{invalid json", 100, 40)
+        tokens = (0, 0) if self.name == "ollama" else (100, 40)
+        return Completion("{invalid json", tokens[0], tokens[1], provider=self.name)
 
 
 class FairnessRetryProvider(ValidEvaluationProvider):
@@ -535,3 +540,303 @@ async def test_invalid_provider_output_is_persisted_as_failed_report(monkeypatch
         reloaded = await client.get(f"/api/evaluations/sessions/{session_id}/report")
         assert reloaded.json() == failed
         assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_ollama_evaluation_does_not_reserve_or_reconcile_cloud_tokens(monkeypatch):
+    from app.routers import evaluations
+
+    provider = ValidEvaluationProvider(name="ollama")
+    monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+
+    reserve_calls = []
+    reconcile_calls = []
+
+    async def fake_reserve(*args, **kwargs):
+        reserve_calls.append((args, kwargs))
+
+    async def fake_reconcile(*args, **kwargs):
+        reconcile_calls.append((args, kwargs))
+
+    monkeypatch.setattr(evaluations, "reserve_tokens", fake_reserve)
+    monkeypatch.setattr(evaluations, "reconcile_tokens", fake_reconcile)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built APIs and distributed systems.",
+                "job_description": "Own reliable backend systems.",
+                "is_demo": False,
+                "duration_seconds": 600,
+            },
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            session.current_state = "completed"
+            session.status = "completed"
+            session.started_at = datetime.now(timezone.utc)
+            db.add_all(
+                [
+                    Transcript(
+                        session_id=session_id,
+                        speaker="interviewer",
+                        message="Describe an API optimization.",
+                        timestamp_ms=now_ms,
+                        source="real",
+                    ),
+                    Transcript(
+                        session_id=session_id,
+                        speaker="candidate",
+                        message="I built a cache for repeated PostgreSQL reads.",
+                        timestamp_ms=now_ms,
+                        duration_ms=3000,
+                        source="real",
+                    ),
+                ]
+            )
+            await db.commit()
+            user = await db.get(User, session.user_id)
+            initial_user_tokens = user.llm_tokens_used
+            initial_session_tokens = session.llm_tokens_used
+
+        generated = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate"
+        )
+        assert generated.status_code == 200, generated.text
+        report = generated.json()
+        assert report["status"] == "completed"
+        assert len(reserve_calls) == 0, "reserve_tokens must not be called for Ollama"
+        assert len(reconcile_calls) == 0, "reconcile_tokens must not be called for Ollama"
+
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            assert session.llm_tokens_used == initial_session_tokens
+            user = await db.get(User, session.user_id)
+            assert user.llm_tokens_used == initial_user_tokens
+
+
+@pytest.mark.asyncio
+async def test_groq_evaluation_reserves_and_reconciles_tokens(monkeypatch):
+    from app.routers import evaluations
+
+    provider = ValidEvaluationProvider(name="groq")
+    monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+
+    reserve_calls = []
+    reconcile_calls = []
+
+    real_reserve = evaluations.reserve_tokens
+    real_reconcile = evaluations.reconcile_tokens
+
+    async def spy_reserve(*args, **kwargs):
+        reserve_calls.append((args, kwargs))
+        return await real_reserve(*args, **kwargs)
+
+    async def spy_reconcile(*args, **kwargs):
+        reconcile_calls.append((args, kwargs))
+        return await real_reconcile(*args, **kwargs)
+
+    monkeypatch.setattr(evaluations, "reserve_tokens", spy_reserve)
+    monkeypatch.setattr(evaluations, "reconcile_tokens", spy_reconcile)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built APIs and distributed systems.",
+                "job_description": "Own reliable backend systems.",
+                "is_demo": False,
+                "duration_seconds": 600,
+            },
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            session.current_state = "completed"
+            session.status = "completed"
+            session.started_at = datetime.now(timezone.utc)
+            db.add_all(
+                [
+                    Transcript(
+                        session_id=session_id,
+                        speaker="interviewer",
+                        message="Describe an API optimization.",
+                        timestamp_ms=now_ms,
+                        source="real",
+                    ),
+                    Transcript(
+                        session_id=session_id,
+                        speaker="candidate",
+                        message="I built a cache for repeated PostgreSQL reads.",
+                        timestamp_ms=now_ms,
+                        duration_ms=3000,
+                        source="real",
+                    ),
+                ]
+            )
+            await db.commit()
+            user = await db.get(User, session.user_id)
+            initial_user_tokens = user.llm_tokens_used
+            initial_session_tokens = session.llm_tokens_used
+
+        generated = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate"
+        )
+        assert generated.status_code == 200, generated.text
+        report = generated.json()
+        assert report["status"] == "completed"
+        assert len(reserve_calls) == 1, "reserve_tokens must be called for Groq"
+        assert len(reconcile_calls) == 1, "reconcile_tokens must be called for Groq"
+
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            assert session.llm_tokens_used > initial_session_tokens
+            user = await db.get(User, session.user_id)
+            assert user.llm_tokens_used > initial_user_tokens
+
+
+@pytest.mark.asyncio
+async def test_ollama_evaluation_failure_does_not_reconcile_unreserved_tokens(monkeypatch):
+    from app.routers import evaluations
+
+    provider = InvalidEvaluationProvider(name="ollama")
+    monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+
+    reserve_calls = []
+    reconcile_calls = []
+
+    async def fake_reserve(*args, **kwargs):
+        reserve_calls.append((args, kwargs))
+
+    async def fake_reconcile(*args, **kwargs):
+        reconcile_calls.append((args, kwargs))
+
+    monkeypatch.setattr(evaluations, "reserve_tokens", fake_reserve)
+    monkeypatch.setattr(evaluations, "reconcile_tokens", fake_reconcile)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built APIs.",
+                "job_category": "backend",
+                "is_demo": False,
+            },
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            session.current_state = "completed"
+            session.status = "completed"
+            db.add_all(
+                [
+                    Transcript(
+                        session_id=session_id,
+                        speaker="interviewer",
+                        message="Describe a backend service you built.",
+                        timestamp_ms=now_ms,
+                        source="real",
+                    ),
+                    Transcript(
+                        session_id=session_id,
+                        speaker="candidate",
+                        message="I built a Python API for internal users.",
+                        timestamp_ms=now_ms,
+                        duration_ms=5000,
+                        source="real",
+                    ),
+                ]
+            )
+            await db.commit()
+            user = await db.get(User, session.user_id)
+            initial_user_tokens = user.llm_tokens_used
+            initial_session_tokens = session.llm_tokens_used
+
+        response = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate"
+        )
+        assert response.status_code == 200, response.text
+        failed = response.json()
+        assert failed["status"] == "failed"
+        assert len(reserve_calls) == 0, "reserve_tokens must not be called on Ollama failure"
+        assert len(reconcile_calls) == 0, "reconcile_tokens must not be called on Ollama failure"
+
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            assert session.llm_tokens_used == initial_session_tokens
+            user = await db.get(User, session.user_id)
+            assert user.llm_tokens_used == initial_user_tokens
+
+
+@pytest.mark.asyncio
+async def test_groq_token_budget_exhaustion_remains_enforced(monkeypatch):
+    from app.routers import evaluations
+
+    provider = ValidEvaluationProvider(name="groq")
+    monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built APIs.",
+                "job_category": "backend",
+                "is_demo": False,
+            },
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        async with async_session() as db:
+            session = await db.get(InterviewSession, session_id)
+            session.current_state = "completed"
+            session.status = "completed"
+            session.llm_tokens_used = 12_000
+            db.add_all(
+                [
+                    Transcript(
+                        session_id=session_id,
+                        speaker="interviewer",
+                        message="Describe a backend service you built.",
+                        timestamp_ms=now_ms,
+                        source="real",
+                    ),
+                    Transcript(
+                        session_id=session_id,
+                        speaker="candidate",
+                        message="I built a Python API for internal users.",
+                        timestamp_ms=now_ms,
+                        duration_ms=5000,
+                        source="real",
+                    ),
+                ]
+            )
+            await db.commit()
+
+        response = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate"
+        )
+        assert response.status_code == 200, response.text
+        failed = response.json()
+        assert failed["status"] == "failed"
+        assert "token budget is exhausted" in failed["error"]

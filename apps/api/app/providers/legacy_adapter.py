@@ -24,6 +24,10 @@ class LegacyProviderAdapter:
         self.provider = provider
         self.purpose = purpose
 
+    @property
+    def name(self) -> str:
+        return self.provider.name
+
     async def complete(
         self,
         *,

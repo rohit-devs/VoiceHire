@@ -202,6 +202,7 @@ async def generate_evaluation_report(
             return _report_payload(existing)
         raise
 
+    report_id = report.id
     if not has_evaluation_pairs(transcripts):
         report.status = "insufficient_data"
         report.error = "No finalized question-and-answer pairs are available for evaluation."
@@ -212,15 +213,19 @@ async def generate_evaluation_report(
     estimated_tokens = math.ceil(
         (transcript_chars + 18_000) / 4
     ) + 2 * MAX_EVALUATION_OUTPUT_TOKENS
+    tokens_reserved = False
     try:
         context = await _evaluation_context(db, session)
         provider = _evaluation_provider()
-        await reserve_tokens(
-            db,
-            user_id=user["id"],
-            session_id=session_id,
-            estimated_tokens=estimated_tokens,
-        )
+        is_local = getattr(provider, "name", None) == "ollama"
+        if not is_local:
+            await reserve_tokens(
+                db,
+                user_id=user["id"],
+                session_id=session_id,
+                estimated_tokens=estimated_tokens,
+            )
+            tokens_reserved = True
         generated = await generate_assessment(
             session_id=session_id,
             session=session,
@@ -229,22 +234,24 @@ async def generate_evaluation_report(
             provider=provider,
             weights_override=settings.EVALUATION_RUBRIC_WEIGHTS or None,
         )
-        if generated["tokens_used"]:
-            await reconcile_tokens(
-                db,
-                user_id=user["id"],
-                session_id=session_id,
-                reserved_tokens=estimated_tokens,
-                actual_tokens=generated["tokens_used"],
-            )
-        else:
-            await reconcile_tokens(
-                db,
-                user_id=user["id"],
-                session_id=session_id,
-                reserved_tokens=estimated_tokens,
-                actual_tokens=0,
-            )
+        if tokens_reserved:
+            if generated["tokens_used"]:
+                await reconcile_tokens(
+                    db,
+                    user_id=user["id"],
+                    session_id=session_id,
+                    reserved_tokens=estimated_tokens,
+                    actual_tokens=generated["tokens_used"],
+                )
+            else:
+                await reconcile_tokens(
+                    db,
+                    user_id=user["id"],
+                    session_id=session_id,
+                    reserved_tokens=estimated_tokens,
+                    actual_tokens=0,
+                )
+            tokens_reserved = False
         report.status = generated["status"]
         report.rubric_version = generated["rubric_version"]
         report.measured_metrics = generated["measured_metrics"]
@@ -272,43 +279,57 @@ async def generate_evaluation_report(
         await db.refresh(report)
         return _report_payload(report)
     except TokenBudgetExceeded as exc:
-        report = await db.get(EvaluationReport, report.id)
-        report.status = "failed"
-        report.error = str(exc)
-        await db.commit()
-        return _report_payload(report)
+        report = await db.get(EvaluationReport, report_id)
+        if report is not None:
+            report.status = "failed"
+            report.error = str(exc)
+            await db.commit()
+            return _report_payload(report)
+        raise
     except EvaluationOutputError as exc:
-        await reconcile_tokens(
-            db,
-            user_id=user["id"],
-            session_id=session_id,
-            reserved_tokens=estimated_tokens,
-            actual_tokens=0,
-        )
-        report.status = "failed"
-        report.error = str(exc)
-        await db.commit()
-        return _report_payload(report)
+        if tokens_reserved:
+            await reconcile_tokens(
+                db,
+                user_id=user["id"],
+                session_id=session_id,
+                reserved_tokens=estimated_tokens,
+                actual_tokens=0,
+            )
+            tokens_reserved = False
+        report = await db.get(EvaluationReport, report_id)
+        if report is not None:
+            report.status = "failed"
+            report.error = str(exc)
+            await db.commit()
+            return _report_payload(report)
+        raise
     except ProviderError as exc:
-        report.status = "failed"
-        report.error = exc.user_message
-        await db.commit()
+        report = await db.get(EvaluationReport, report_id)
+        if report is not None:
+            report.status = "failed"
+            report.error = exc.user_message
+            await db.commit()
         raise _provider_http_exception(exc) from exc
     except LLMUnavailable:
         # The provider may have billed a request without returning usage metadata;
         # keep the full reservation rather than undercounting cost.
-        report.status = "failed"
-        report.error = "The evaluation provider is temporarily unavailable."
-        await db.commit()
-        return _report_payload(report)
+        report = await db.get(EvaluationReport, report_id)
+        if report is not None:
+            report.status = "failed"
+            report.error = "The evaluation provider is temporarily unavailable."
+            await db.commit()
+            return _report_payload(report)
+        raise
     except Exception:
         logger.exception("Evaluation failed session_id=%s", session_id)
         await db.rollback()
-        report = await db.get(EvaluationReport, report.id)
-        report.status = "failed"
-        report.error = "Evaluation failed unexpectedly; no assessment was stored."
-        await db.commit()
-        return _report_payload(report)
+        report = await db.get(EvaluationReport, report_id)
+        if report is not None:
+            report.status = "failed"
+            report.error = "Evaluation failed unexpectedly; no assessment was stored."
+            await db.commit()
+            return _report_payload(report)
+        raise
 
 
 @router.get("/sessions/{session_id}/analytics")
