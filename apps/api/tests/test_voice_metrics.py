@@ -81,3 +81,27 @@ def test_filler_rate_uses_the_segment_language_list():
         duration_seconds=120,
     )
     assert metrics["filler_word_rate"]["value"] == 0.4
+
+
+def test_naive_sqlite_timestamps_do_not_crash():
+    # started_at and ended_at are both naive as stored by SQLite.
+    # calculate_voice_metrics normalizes started_at to UTC but must not
+    # crash when `now` (ended_at) remains offset-naive.
+    started = datetime(2026, 10, 24, 22, 28, 6)  # naive, like SQLite
+    ended = datetime(2026, 10, 24, 22, 28, 40)   # naive, like SQLite
+    metrics = calculate_voice_metrics(
+        [
+            {
+                "speaker": "candidate",
+                "message": "I built an API",
+                "language": "en",
+                "timestamp_ms": 1_000,
+                "duration_ms": 2_000,
+            }
+        ],
+        started_at=started,
+        duration_seconds=120,
+        now=ended,
+    )
+    assert metrics["time_remaining_seconds"]["value"] is not None
+    assert metrics["time_remaining_seconds"]["value"] >= 0

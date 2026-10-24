@@ -67,6 +67,8 @@ def calculate_voice_metrics(
     filler_rate = round(fillers / total_words, 4) if total_words else None
 
     current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
     normalized_start = started_at
     if normalized_start is not None and normalized_start.tzinfo is None:
         normalized_start = normalized_start.replace(tzinfo=timezone.utc)
