@@ -1,8 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
-import ClerkTokenSync from "@/components/ClerkTokenSync";
 import DemoModeBanner from "@/components/DemoModeBanner";
-import { getAuthMode } from "@/lib/auth-mode";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -65,32 +62,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const authMode = getAuthMode();
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-  const useClerk = authMode === "clerk" && Boolean(publishableKey);
-
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-[#0a0a0a] text-neutral-200 antialiased">
         <DemoModeBanner />
-        {useClerk ? (
-          <ClerkProvider
-            publishableKey={publishableKey!}
-            appearance={{
-              variables: {
-                colorPrimary: "#e8321e",
-                colorBackground: "#0a0a0a",
-                colorText: "#e5e5e5",
-              },
-            }}
-          >
-            <ClerkTokenSync />
-            {children}
-          </ClerkProvider>
-        ) : (
-          children
-        )}
+        {children}
       </body>
     </html>
   );
