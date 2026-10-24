@@ -20,7 +20,7 @@ async function captureResponsiveScreenshots(page: Page, screen: string) {
 }
 
 async function enterLocalDemo(page: Page) {
-  await page.goto("/");
+  await page.goto("/dashboard");
   await expect(page).toHaveURL(/dashboard/, { timeout: 30_000 });
   await captureResponsiveScreenshots(page, "dashboard");
   await page.goto("/onboarding");
@@ -40,8 +40,12 @@ async function enterLocalDemo(page: Page) {
 
 test("landing page explains the product and links to practice", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveURL(/dashboard/, { timeout: 30_000 });
-  await captureResponsiveScreenshots(page, "dashboard");
+  await expect(page).toHaveURL(/127\.0\.0\.1:3101\/?$/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: /AI-powered mock interviews/i })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Start Interview" }),
+  ).toBeVisible();
+  await captureResponsiveScreenshots(page, "landing");
 });
 
 test("local demo sign-in saves onboarding details", async ({ page }) => {
