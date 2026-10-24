@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getGuestId, GUEST_ID_HEADER } from "@/lib/guest";
 
 export interface TranscriptMessage {
   type: "transcript";
@@ -37,7 +38,7 @@ interface UseInterviewWebSocketOptions {
   sessionId: string;
   apiUrl?: string;
   autoConnect?: boolean;
-  authToken?: string | null;
+  guestId?: string | null;
 }
 
 interface UseInterviewWebSocketReturn {
@@ -58,7 +59,7 @@ export function useInterviewWebSocket({
   sessionId,
   apiUrl,
   autoConnect = true,
-  authToken = null,
+  guestId = null,
 }: UseInterviewWebSocketOptions): UseInterviewWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,7 +88,8 @@ export function useInterviewWebSocket({
     );
     url.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("after_sequence", String(lastSequenceRef.current));
-    if (authToken) url.searchParams.set("token", authToken);
+    const resolvedGuestId = guestId ?? getGuestId();
+    if (resolvedGuestId) url.searchParams.set(GUEST_ID_HEADER, resolvedGuestId);
 
     const socket = new WebSocket(url.toString());
     wsRef.current = socket;
@@ -135,7 +137,7 @@ export function useInterviewWebSocket({
       attemptsRef.current += 1;
       reconnectTimerRef.current = setTimeout(connect, delayMs);
     };
-  }, [apiUrl, authToken, sessionId]);
+  }, [apiUrl, guestId, sessionId]);
 
   const disconnect = useCallback(() => {
     explicitlyDisconnectedRef.current = true;
@@ -162,7 +164,7 @@ export function useInterviewWebSocket({
     setCurrentState("created");
     if (autoConnect) connect();
     return disconnect;
-  }, [autoConnect, authToken, connect, disconnect, sessionId]);
+  }, [autoConnect, guestId, connect, disconnect, sessionId]);
 
   return {
     isConnected,

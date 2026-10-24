@@ -14,11 +14,9 @@ import type {
   JobDescription,
   PerformanceHistory,
 } from "@/types";
+import { getOrCreateGuestId, GUEST_ID_HEADER } from "@/lib/guest";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
-
-let _authToken: string | null = null;
-let _authTokenProvider: (() => Promise<string | null>) | null = null;
 
 function apiErrorMessage(payload: { detail?: unknown } | null, fallback: string): string {
   const detail = payload?.detail;
@@ -30,16 +28,8 @@ function apiErrorMessage(payload: { detail?: unknown } | null, fallback: string)
   return fallback;
 }
 
-export function setAuthToken(token: string | null) {
-  _authToken = token;
-}
-
-export function setAuthTokenProvider(provider: (() => Promise<string | null>) | null) {
-  _authTokenProvider = provider;
-}
-
-export async function getAuthToken(): Promise<string | null> {
-  return _authTokenProvider ? _authTokenProvider() : _authToken;
+export function getGuestId(): string {
+  return getOrCreateGuestId();
 }
 
 class ApiInterviewService implements InterviewService {
@@ -47,10 +37,8 @@ class ApiInterviewService implements InterviewService {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    const token = await getAuthToken();
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
+    const guestId = getGuestId();
+    headers[GUEST_ID_HEADER] = guestId;
 
     const res = await fetch(`${API_URL}${path}`, {
       ...options,
@@ -81,9 +69,8 @@ class ApiInterviewService implements InterviewService {
     sessionId: string,
     audio: Blob,
   ): Promise<{ text: string; provider: string; model: string }> {
-    const token = await getAuthToken();
     const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `******`;
+    headers[GUEST_ID_HEADER] = getGuestId();
     const body = new FormData();
     body.append("audio", audio, "answer.webm");
     const response = await fetch(

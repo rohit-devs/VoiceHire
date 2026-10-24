@@ -7,6 +7,7 @@ import type {
   IAgoraRTCRemoteUser,
   UID,
 } from "agora-rtc-sdk-ng";
+import { getGuestId, GUEST_ID_HEADER } from "@/lib/guest";
 
 export type AgoraVoiceState =
   | "idle"
@@ -18,7 +19,7 @@ export type AgoraVoiceState =
   | "failed"
   | "ended";
 
-interface AgoraTokenResponse {
+export interface AgoraTokenResponse {
   token: string;
   channel_name: string;
   uid: number;
@@ -29,7 +30,7 @@ interface AgoraTokenResponse {
 interface UseAgoraVoiceOptions {
   sessionId: string;
   apiUrl?: string;
-  authToken?: string | null;
+  guestId?: string | null;
   reconnectLimit?: number;
 }
 
@@ -53,7 +54,7 @@ type ListenerCleanup = () => void;
 export function useAgoraVoice({
   sessionId,
   apiUrl = process.env.NEXT_PUBLIC_API_URL || "",
-  authToken = null,
+  guestId = null,
   reconnectLimit = 3,
 }: UseAgoraVoiceOptions): UseAgoraVoiceReturn {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
@@ -83,7 +84,8 @@ export function useAgoraVoice({
 
   const requestToken = useCallback(async (): Promise<AgoraTokenResponse> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const resolvedGuestId = guestId ?? getGuestId();
+    headers[GUEST_ID_HEADER] = resolvedGuestId;
     const response = await fetch(`${apiUrl}/api/agora/token`, {
       method: "POST",
       headers,
@@ -95,7 +97,7 @@ export function useAgoraVoice({
       throw new Error(detail);
     }
     return (await response.json()) as AgoraTokenResponse;
-  }, [apiUrl, authToken, sessionId]);
+  }, [apiUrl, guestId, sessionId]);
 
   const removeListeners = useCallback(() => {
     listenersRef.current?.();

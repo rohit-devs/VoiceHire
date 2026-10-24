@@ -7,7 +7,7 @@ import { apiInterviewService as interviewService } from "@/lib/services/apiInter
 import { useInterviewStore } from "@/stores/interviewStore";
 import { useInterviewWebSocket } from "@/hooks/useInterviewWebSocket";
 import { useAgoraVoice, type AgoraVoiceState } from "@/hooks/useAgoraVoice";
-import { getAuthToken } from "@/lib/services/apiInterviewService";
+import { getGuestId } from "@/lib/guest";
 import { VoiceOrb } from "@/components/interview/VoiceOrb";
 import { Loader2, ArrowRight, PhoneOff, Mic, MicOff } from "lucide-react";
 import { Button, Card, Textarea } from "@/components/ui/primitives";
@@ -38,7 +38,7 @@ export default function LiveInterviewPage() {
   const interviewId = params.id as string;
   const { setInterviewPhase, setSessionId } = useInterviewStore();
 
-  const [authToken, setAuthTokenState] = useState<string | null>(null);
+  const [guestId, setGuestIdState] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [aiQuestion, setAiQuestion] = useState("");
@@ -78,7 +78,7 @@ export default function LiveInterviewPage() {
     metrics: wsMetrics,
     connect: connectWebSocket,
     disconnect: disconnectWebSocket,
-  } = useInterviewWebSocket({ sessionId, autoConnect: false, authToken });
+  } = useInterviewWebSocket({ sessionId, autoConnect: false, guestId });
 
   const {
     state: agoraState,
@@ -89,9 +89,9 @@ export default function LiveInterviewPage() {
     leave: leaveAgora,
     mute: muteAgora,
     unmute: unmuteAgora,
-  } = useAgoraVoice({ sessionId, authToken });
+  } = useAgoraVoice({ sessionId, guestId });
 
-  // Use the current Clerk token when configured; local demo mode intentionally has none.
+  // Resolve guest identity from localStorage; backend issues a cookie on first visit.
   useEffect(() => {
     const secure = window.isSecureContext;
     setSecureContext(secure);
@@ -100,10 +100,11 @@ export default function LiveInterviewPage() {
       setSpeechError("Microphone needs HTTPS or localhost");
     }
     let active = true;
-    void getAuthToken().then((token) => {
-      if (active) setAuthTokenState(token);
-    }).catch((cause: unknown) => {
-      if (active) setActionError(cause instanceof Error ? cause.message : "Unable to load authentication.");
+    void (async () => {
+      const id = getGuestId();
+      if (active) setGuestIdState(id);
+    })().catch((cause: unknown) => {
+      if (active) setActionError(cause instanceof Error ? cause.message : "Unable to load guest identity.");
     });
     return () => { active = false; };
   }, []);
