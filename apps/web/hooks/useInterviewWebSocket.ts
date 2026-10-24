@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getGuestId, GUEST_ID_HEADER } from "@/lib/guest";
+import { getGuestId } from "@/lib/guest";
 
 export interface TranscriptMessage {
   type: "transcript";
@@ -89,7 +89,7 @@ export function useInterviewWebSocket({
     url.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("after_sequence", String(lastSequenceRef.current));
     const resolvedGuestId = guestId ?? getGuestId();
-    if (resolvedGuestId) url.searchParams.set(GUEST_ID_HEADER, resolvedGuestId);
+    if (resolvedGuestId) url.searchParams.set("token", resolvedGuestId);
 
     const socket = new WebSocket(url.toString());
     wsRef.current = socket;
