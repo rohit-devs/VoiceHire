@@ -106,28 +106,36 @@ export default function LiveInterviewPage() {
     })().catch((cause: unknown) => {
       if (active) setActionError(cause instanceof Error ? cause.message : "Unable to load guest identity.");
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
     let active = true;
-    void interviewService.getSTTProvider().then((providerName) => {
-      if (active) setSTTProviderName(providerName);
-    }).catch((cause: unknown) => {
-      if (active) {
-        setSpeechError(
-          cause instanceof Error
-            ? cause.message
-            : "Speech recognition provider status is unavailable.",
-        );
-      }
-    });
-    return () => { active = false; };
+    void interviewService
+      .getSTTProvider()
+      .then((providerName) => {
+        if (active) setSTTProviderName(providerName);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setSpeechError(
+            cause instanceof Error
+              ? cause.message
+              : "Speech recognition provider status is unavailable.",
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Initialize the persisted session.
   useEffect(() => {
-    interviewService.getInterview(interviewId)
+    interviewService
+      .getInterview(interviewId)
       .then((session) => {
         if (!session) throw new Error("Interview session was not found.");
         setIsDemo(session.isDemo ?? false);
@@ -202,7 +210,9 @@ export default function LiveInterviewPage() {
   useEffect(() => {
     if (!isInterviewStarted) return;
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [isInterviewStarted]);
 
   const appendTranscript = useCallback((transcript: RoomTranscript) => {
@@ -240,59 +250,71 @@ export default function LiveInterviewPage() {
     }
   }, [appendTranscript, connectWebSocket, joinAgora, sessionId, useRealVoice]);
 
-  const submitAnswer = useCallback(async (
-    candidateText?: string,
-    speechSegment?: FinalSpeechSegment,
-  ) => {
-    const message = (candidateText ?? answerText).trim();
-    if (!message || processingAnswerRef.current) return;
-    processingAnswerRef.current = true;
-    speechRecognitionRef.current?.stop();
-    speechSynthesisRef.current?.stop();
-    setActionError("");
-    setOrbState("user-speaking");
-    try {
-      const acknowledgment = await interviewService.submitTranscript(sessionId, message, {
-        messageId: speechSegment?.messageId,
-        durationMs: speechSegment?.durationMs,
-        language: speechSegment?.language,
-      });
-      appendTranscript({
-        id: acknowledgment.message_id,
-        sequenceNumber: acknowledgment.sequence_number,
-        speaker: "candidate",
-        text: message,
-        timestamp: acknowledgment.timestamp_ms,
-      });
-      setAnswerText("");
-      setLastSubmittedAnswer(message);
-      setOrbState("thinking");
-      const nextQuestion = await interviewService.generateNextQuestion(sessionId, message);
-      setAiQuestion(nextQuestion.question_text);
-      appendTranscript({
-        id: nextQuestion.message_id,
-        sequenceNumber: nextQuestion.sequence_number,
-        speaker: "interviewer",
-        text: nextQuestion.question_text,
-        timestamp: nextQuestion.timestamp_ms,
-      });
-      setLastSubmittedAnswer("");
-      setOrbState(useRealVoice ? "speaking" : "idle");
-      if (nextQuestion.state === "completed") {
-        setInterviewPhase("processing");
-        disconnectWebSocket();
-        speechRecognitionRef.current?.stop();
-        speechSynthesisRef.current?.stop();
-        leaveAgora();
-        router.push(`/interview/complete/${interviewId}`);
+  const submitAnswer = useCallback(
+    async (candidateText?: string, speechSegment?: FinalSpeechSegment) => {
+      const message = (candidateText ?? answerText).trim();
+      if (!message || processingAnswerRef.current) return;
+      processingAnswerRef.current = true;
+      speechRecognitionRef.current?.stop();
+      speechSynthesisRef.current?.stop();
+      setActionError("");
+      setOrbState("user-speaking");
+      try {
+        const acknowledgment = await interviewService.submitTranscript(sessionId, message, {
+          messageId: speechSegment?.messageId,
+          durationMs: speechSegment?.durationMs,
+          language: speechSegment?.language,
+        });
+        appendTranscript({
+          id: acknowledgment.message_id,
+          sequenceNumber: acknowledgment.sequence_number,
+          speaker: "candidate",
+          text: message,
+          timestamp: acknowledgment.timestamp_ms,
+        });
+        setAnswerText("");
+        setLastSubmittedAnswer(message);
+        setOrbState("thinking");
+        const nextQuestion = await interviewService.generateNextQuestion(sessionId, message);
+        setAiQuestion(nextQuestion.question_text);
+        appendTranscript({
+          id: nextQuestion.message_id,
+          sequenceNumber: nextQuestion.sequence_number,
+          speaker: "interviewer",
+          text: nextQuestion.question_text,
+          timestamp: nextQuestion.timestamp_ms,
+        });
+        setLastSubmittedAnswer("");
+        setOrbState(useRealVoice ? "speaking" : "idle");
+        if (nextQuestion.state === "completed") {
+          setInterviewPhase("processing");
+          disconnectWebSocket();
+          speechRecognitionRef.current?.stop();
+          speechSynthesisRef.current?.stop();
+          leaveAgora();
+          router.push(`/interview/complete/${interviewId}`);
+        }
+      } catch (cause) {
+        setActionError(
+          cause instanceof Error ? cause.message : "Failed to submit answer or generate the next question.",
+        );
+        setOrbState(useRealVoice ? "listening" : "idle");
+      } finally {
+        processingAnswerRef.current = false;
       }
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : "Failed to submit answer or generate the next question.");
-      setOrbState(useRealVoice ? "listening" : "idle");
-    } finally {
-      processingAnswerRef.current = false;
-    }
-  }, [answerText, appendTranscript, disconnectWebSocket, interviewId, leaveAgora, router, sessionId, setInterviewPhase, useRealVoice]);
+    },
+    [
+      answerText,
+      appendTranscript,
+      disconnectWebSocket,
+      interviewId,
+      leaveAgora,
+      router,
+      sessionId,
+      setInterviewPhase,
+      useRealVoice,
+    ],
+  );
 
   const retryQuestionGeneration = useCallback(async () => {
     if (!lastSubmittedAnswer) return;
@@ -322,7 +344,8 @@ export default function LiveInterviewPage() {
       !useRealVoice ||
       !aiQuestion ||
       spokenQuestionRef.current === aiQuestion
-    ) return;
+    )
+      return;
     const synthesis = speechSynthesisRef.current;
     if (!synthesis?.supported) return;
     synthesis.setVoice(speechVoiceURI);
@@ -421,7 +444,11 @@ export default function LiveInterviewPage() {
   };
 
   const formatTimestamp = (ts: number) => {
-    return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    return new Date(ts).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
   if (loading) {
@@ -458,7 +485,9 @@ export default function LiveInterviewPage() {
           <button
             onClick={() => void toggleVoiceMode()}
             disabled={!secureContext}
-            aria-label={secureContext ? undefined : "Voice unavailable: microphone needs HTTPS or localhost"}
+            aria-label={
+              secureContext ? undefined : "Voice unavailable: microphone needs HTTPS or localhost"
+            }
             className={`text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
               useRealVoice
                 ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
@@ -485,7 +514,9 @@ export default function LiveInterviewPage() {
         <div className="w-48 border-r border-white/[0.08] bg-[#0a0a0f] p-4 flex-col hidden md:flex">
           <div className="space-y-4">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Progress</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                Progress
+              </p>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs text-muted-foreground">Question</span>
                 <span className="text-xs font-semibold text-white">{interviewerQuestions.length}</span>
@@ -493,30 +524,42 @@ export default function LiveInterviewPage() {
             </div>
 
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Category</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                Category
+              </p>
               <span className="text-xs text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2 py-1 rounded-md inline-block capitalize">
                 {currentQuestion?.category}
               </span>
             </div>
 
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Timer</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                Timer
+              </p>
               <p className="text-sm font-mono text-white">{formatTime(elapsed)}</p>
             </div>
 
             {useRealVoice && (
               <div>
-                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Voice Status</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                  Voice Status
+                </p>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] text-muted-foreground">Optional RTC</span>
-                    <span className={`text-[11px] ${agoraState === "connected" ? "text-emerald-400" : "text-muted-foreground"}`}>
+                    <span
+                      className={`text-[11px] ${
+                        agoraState === "connected" ? "text-emerald-400" : "text-muted-foreground"
+                      }`}
+                    >
                       {agoraState === "connected" ? "connected" : "not required"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] text-muted-foreground">WebSocket</span>
-                    <span className={`text-[11px] ${wsConnected ? "text-emerald-400" : "text-amber-400"}`}>
+                    <span
+                      className={`text-[11px] ${wsConnected ? "text-emerald-400" : "text-amber-400"}`}
+                    >
                       {wsConnecting ? "Connecting..." : wsConnected ? "Live" : "Off"}
                     </span>
                   </div>
@@ -531,7 +574,9 @@ export default function LiveInterviewPage() {
           </div>
 
           <div className="mt-6">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Questions</p>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
+              Questions
+            </p>
             <div className="space-y-1">
               {interviewerQuestions.map((transcript, i) => (
                 <div
@@ -591,9 +636,7 @@ export default function LiveInterviewPage() {
                                 : "Idle"}
                       </span>
                     </div>
-                    <p className="text-[15px] text-white leading-relaxed">
-                      {currentQuestion?.q}
-                    </p>
+                    <p className="text-[15px] text-white leading-relaxed">{currentQuestion?.q}</p>
                     {useRealVoice && (
                       <p className="mt-3 text-[11px] text-slate-400">
                         {speechSupported
@@ -602,7 +645,10 @@ export default function LiveInterviewPage() {
                       </p>
                     )}
                     {!secureContext && (
-                      <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm leading-relaxed text-amber-100">
+                      <p
+                        role="status"
+                        className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm leading-relaxed text-amber-100"
+                      >
                         Microphone needs HTTPS or localhost. Continue by typing your answer below.
                       </p>
                     )}
@@ -611,7 +657,7 @@ export default function LiveInterviewPage() {
               </Card>
 
               {/* User Response Card */}
-              {transcripts.filter(t => t.speaker === "candidate").length > 0 && (
+              {transcripts.filter((t) => t.speaker === "candidate").length > 0 && (
                 <Card className="border-emerald-500/20 bg-emerald-500/[0.03] p-5">
                   <div className="flex items-start gap-4">
                     <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
@@ -620,7 +666,9 @@ export default function LiveInterviewPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-semibold text-emerald-300">You</span>
-                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Speaking</span>
+                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                          Speaking
+                        </span>
                       </div>
                       <div className="flex items-center gap-3 mb-2">
                         {agoraState === "connected" && audioLevel > 0 && (
@@ -630,7 +678,7 @@ export default function LiveInterviewPage() {
                         )}
                       </div>
                       <p className="text-sm text-emerald-100 leading-relaxed">
-                        {transcripts.filter(t => t.speaker === "candidate").pop()?.text}
+                        {transcripts.filter((t) => t.speaker === "candidate").pop()?.text}
                       </p>
                     </div>
                   </div>
@@ -653,8 +701,11 @@ export default function LiveInterviewPage() {
                         className="min-h-10 rounded-md border border-white/10 bg-[#141414] px-2 text-foreground"
                       >
                         <option value="">System default</option>
-                        {speechVoices.map((voice) => (
-                          <option key={voice.voiceURI} value={voice.voiceURI}>
+                        {getUniqueSpeechVoices(speechVoices).map((voice) => (
+                          <option
+                            key={voice.voiceURI || `${voice.name}|${voice.lang}`}
+                            value={voice.voiceURI}
+                          >
                             {voice.name} ({voice.lang})
                           </option>
                         ))}
@@ -690,7 +741,9 @@ export default function LiveInterviewPage() {
                     {agoraState === "connecting" || agoraState === "requesting-permission" ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        {agoraState === "requesting-permission" ? "Requesting microphone..." : "Connecting..."}
+                        {agoraState === "requesting-permission"
+                          ? "Requesting microphone..."
+                          : "Connecting..."}
                       </>
                     ) : (
                       <>
@@ -759,15 +812,17 @@ export default function LiveInterviewPage() {
           {/* Bottom Metrics */}
           {isInterviewStarted && (
             <div className="grid grid-cols-2 gap-3 border-t border-white/[0.08] bg-[#0a0a0f] p-4 sm:grid-cols-3 lg:grid-cols-6">
-          <MetricItem label="Speaking time" metric={getMetric(metrics, "speaking_duration_seconds")} />
-          <MetricItem label="Words per minute" metric={getMetric(metrics, "words_per_minute")} />
-          <MetricItem label="Filler rate" metric={getMetric(metrics, "filler_word_rate")} />
-          <MetricItem label="Average answer" metric={getMetric(metrics, "answer_length_words")} />
-          <MetricItem label="Time remaining" metric={getMetric(metrics, "time_remaining_seconds")} />
-          <div className="flex min-w-0 flex-col justify-center rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <span className="text-xs font-medium text-slate-300">Interview progress</span>
-            <span className="mt-1 text-sm font-semibold text-white">{interviewerQuestions.length} questions asked</span>
-          </div>
+              <MetricItem label="Speaking time" metric={getMetric(metrics, "speaking_duration_seconds")} />
+              <MetricItem label="Words per minute" metric={getMetric(metrics, "words_per_minute")} />
+              <MetricItem label="Filler rate" metric={getMetric(metrics, "filler_word_rate")} />
+              <MetricItem label="Average answer" metric={getMetric(metrics, "answer_length_words")} />
+              <MetricItem label="Time remaining" metric={getMetric(metrics, "time_remaining_seconds")} />
+              <div className="flex min-w-0 flex-col justify-center rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                <span className="text-xs font-medium text-slate-300">Interview progress</span>
+                <span className="mt-1 text-sm font-semibold text-white">
+                  {interviewerQuestions.length} questions asked
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -777,7 +832,12 @@ export default function LiveInterviewPage() {
           <div className="p-4 border-b border-white/[0.08] flex items-center justify-between">
             <h3 className="text-[13px] font-semibold text-white">Live Transcript</h3>
             <label className="flex items-center gap-1.5 cursor-pointer">
-              <input type="checkbox" checked={autoScroll} onChange={(event) => setAutoScroll(event.target.checked)} className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/20" />
+              <input
+                type="checkbox"
+                checked={autoScroll}
+                onChange={(event) => setAutoScroll(event.target.checked)}
+                className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/20"
+              />
               <span className="text-[11px] text-muted-foreground">Auto-scroll</span>
             </label>
           </div>
@@ -786,7 +846,13 @@ export default function LiveInterviewPage() {
               {interimTranscript}
             </p>
           )}
-          <div role="log" aria-label="Interview transcript" aria-live="polite" aria-relevant="additions" className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div
+            role="log"
+            aria-label="Interview transcript"
+            aria-live="polite"
+            aria-relevant="additions"
+            className="flex-1 overflow-y-auto p-4 space-y-3"
+          >
             {transcripts.map((t) => (
               <div
                 key={t.id}
@@ -797,10 +863,16 @@ export default function LiveInterviewPage() {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[11px] font-medium ${t.speaker === "candidate" ? "text-emerald-400" : "text-violet-400"}`}>
+                  <span
+                    className={`text-[11px] font-medium ${
+                      t.speaker === "candidate" ? "text-emerald-400" : "text-violet-400"
+                    }`}
+                  >
                     {t.speaker === "candidate" ? "You" : "AI Interviewer"}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">{formatTimestamp(t.timestamp)}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatTimestamp(t.timestamp)}
+                  </span>
                 </div>
                 <p className="text-[13px] text-slate-200 leading-relaxed">{t.text}</p>
               </div>
@@ -813,10 +885,17 @@ export default function LiveInterviewPage() {
   );
 }
 
-function getMetric(
-  metrics: Record<string, unknown> | null,
-  key: string,
-): MetricResult {
+function getUniqueSpeechVoices(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
+  const seen = new Set<string>();
+  return voices.filter((voice) => {
+    const key = voice.voiceURI || `${voice.name}|${voice.lang}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getMetric(metrics: Record<string, unknown> | null, key: string): MetricResult {
   const value = metrics?.[key];
   if (!value || typeof value !== "object") {
     return { value: null, unit: "", reason: "Metrics are not available yet." };
@@ -830,14 +909,22 @@ function getMetric(
 }
 
 function MetricItem({ label, metric }: { label: string; metric: MetricResult }) {
-  const value = metric.value === null
-    ? "—"
-    : `${Number.isInteger(metric.value) ? metric.value : metric.value.toFixed(1)} ${metric.unit}`;
+  const value =
+    metric.value === null
+      ? "—"
+      : `${Number.isInteger(metric.value) ? metric.value : metric.value.toFixed(1)} ${metric.unit}`;
   return (
     <div className="flex items-center gap-3" title={metric.reason ?? undefined}>
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="text-sm font-bold text-white" aria-label={metric.reason ?? `${label}: ${value}`}>{value}</p>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          {label}
+        </p>
+        <p
+          className="text-sm font-bold text-white"
+          aria-label={metric.reason ?? `${label}: ${value}`}
+        >
+          {value}
+        </p>
       </div>
     </div>
   );
