@@ -148,7 +148,7 @@ export default function DashboardPage() {
 
         <div className="space-y-8 p-4 sm:p-8">
           {/* Hero */}
-          <DashboardHero />
+          <DashboardHero greeting={data.greeting} subtitle={data.subtitle} />
 
           {/* Metrics Grid */}
           {metrics.some((m) => m.value !== null) ? (

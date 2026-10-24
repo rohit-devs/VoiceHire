@@ -6,7 +6,7 @@ interface MetricCardProps {
   label: string;
   value: number;
   icon: LucideIcon;
-  color: string;
+  color?: string;
 }
 
 export function MetricCard({ label, value, icon: Icon }: MetricCardProps) {
