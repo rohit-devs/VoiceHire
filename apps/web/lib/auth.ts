@@ -27,7 +27,11 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
 
   // ── Secret ───────────────────────────────────────────────────────────────
-  secret: process.env.BETTER_AUTH_SECRET,
+  // Required by better-auth. Falls back to a build-time placeholder when
+  // BETTER_AUTH_SECRET is not configured so Next.js static generation does not
+  // throw. This placeholder is never used at runtime: better-auth mode is only
+  // activated when BETTER_AUTH_SECRET is set (>=32 chars) via getAuthMode().
+  secret: process.env.BETTER_AUTH_SECRET || "voicehire-build-placeholder-do-not-use-in-production",
 
   // ── Database adapter ─────────────────────────────────────────────────────
   // Memory adapter: works with zero native dependencies.

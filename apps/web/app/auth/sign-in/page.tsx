@@ -3,9 +3,10 @@
 /**
  * Better Auth native sign-in page.
  * Only reachable when authMode === "better-auth" (BETTER_AUTH_SECRET is set, Clerk is not).
+ * Wrapped in Suspense because useSearchParams() requires it in Next.js 15.
  */
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Mic, Loader2 } from "lucide-react";
@@ -43,7 +44,8 @@ export default function BetterAuthSignInPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-4 py-12">
+    <Suspense fallback={null}>
+      <main className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-4 py-12">
       <div className="mb-8 flex flex-col items-center gap-3">
         <Link
           href="/"
@@ -132,5 +134,6 @@ export default function BetterAuthSignInPage() {
         </p>
       </Card>
     </main>
+    </Suspense>
   );
 }
