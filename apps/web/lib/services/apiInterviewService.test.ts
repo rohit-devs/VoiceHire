@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  apiInterviewService,
-  setAuthToken,
-  setAuthTokenProvider,
-} from "./apiInterviewService";
+import { apiInterviewService } from "./apiInterviewService";
+import { getOrCreateGuestId } from "@/lib/guest";
+
+vi.mock("@/lib/guest", () => ({
+  getOrCreateGuestId: vi.fn(() => "test-guest-uuid-v4-1234-4abc-8def-123456789abc"),
+  GUEST_ID_HEADER: "x-guest-id",
+  getGuestId: vi.fn(() => "test-guest-uuid-v4-1234-4abc-8def-123456789abc"),
+  isValidGuestId: vi.fn(() => true),
+}));
 
 describe("apiInterviewService request handling", () => {
   beforeEach(() => {
-    setAuthToken(null);
-    setAuthTokenProvider(null);
     vi.restoreAllMocks();
+    vi.mocked(getOrCreateGuestId).mockReturnValue("test-guest-uuid-v4-1234-4abc-8def-123456789abc");
   });
 
   it("surfaces API detail when a request fails", async () => {
@@ -48,8 +51,7 @@ describe("apiInterviewService request handling", () => {
     await expect(apiInterviewService.getSTTProvider()).resolves.toBe("browser");
   });
 
-  it("posts recorded audio as multipart data with the current auth token", async () => {
-    setAuthToken("fresh-token");
+  it("posts recorded audio as multipart data with the guest ID header", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ text: "A spoken answer.", provider: "deepgram", model: "nova-3" }),
@@ -66,27 +68,26 @@ describe("apiInterviewService request handling", () => {
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/api/stt/transcribe?session_id=session-1");
     expect(options.method).toBe("POST");
-    expect((options.headers as Record<string, string>).Authorization).toBe("******");
+    expect((options.headers as Record<string, string>)["x-guest-id"]).toBe(
+      "test-guest-uuid-v4-1234-4abc-8def-123456789abc",
+    );
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get("audio")).toBeInstanceOf(File);
   });
 
-  it("uses a fresh Clerk token provider for each authenticated request", async () => {
-    const tokenProvider = vi.fn().mockResolvedValue("fresh-clerk-token");
+  it("uses a stable guest ID from localStorage for each authenticated request", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [],
     });
     vi.stubGlobal("fetch", fetchMock);
-    setAuthTokenProvider(tokenProvider);
 
     await apiInterviewService.getHistory();
 
-    expect(tokenProvider).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledOnce();
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect((options.headers as Record<string, string>).Authorization).toBe(
-      "Bearer fresh-clerk-token",
+    expect((options.headers as Record<string, string>)["x-guest-id"]).toBe(
+      "test-guest-uuid-v4-1234-4abc-8def-123456789abc",
     );
   });
 });

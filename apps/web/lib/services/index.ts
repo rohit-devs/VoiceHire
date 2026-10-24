@@ -1,4 +1,6 @@
-export { apiInterviewService } from "@/lib/services/apiInterviewService";
+import { apiInterviewService } from "@/lib/services/apiInterviewService";
+
+export { apiInterviewService };
 
 export const interviewService = apiInterviewService;
 

@@ -67,7 +67,7 @@ describe("useAgoraVoice", () => {
     agoraMocks.createMicrophoneAudioTrack.mockResolvedValue(track);
 
     const { result, unmount } = renderHook(() =>
-      useAgoraVoice({ sessionId: "session-1", authToken: "clerk-token" }),
+      useAgoraVoice({ sessionId: "session-1", guestId: "test-guest-id" }),
     );
 
     await act(async () => {

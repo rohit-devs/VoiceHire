@@ -52,6 +52,9 @@ export function getOrCreateGuestId(): string {
   return fresh;
 }
 
+/** Alias for getOrCreateGuestId — used by API service and hooks. */
+export const getGuestId = getOrCreateGuestId;
+
 /** Clear the guest ID from localStorage (sign-out equivalent). */
 export function clearGuestId(): void {
   if (typeof localStorage === "undefined") return;
