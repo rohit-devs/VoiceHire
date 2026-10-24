@@ -32,8 +32,6 @@ async def test_readiness_reports_optional_services_without_exposing_credentials(
     monkeypatch.setattr(settings, "DEEPGRAM_API_KEY", "deepgram-test-key-that-is-valid")
     monkeypatch.setattr(settings, "AGORA_APP_ID", "")
     monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "")
-    monkeypatch.setattr(settings, "CLERK_SECRET_KEY", "")
-    monkeypatch.setattr(settings, "CLERK_JWT_JWKS_URL", "")
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -49,7 +47,6 @@ async def test_readiness_reports_optional_services_without_exposing_credentials(
     assert payload["dependencies"]["deepgram"]["status"] == "ok"
     assert payload["dependencies"]["redis"]["status"] == "disabled"
     assert payload["dependencies"]["agora"]["status"] == "disabled"
-    assert payload["dependencies"]["clerk"]["status"] == "disabled"
     assert secret not in response.text
     assert live.status_code == 200
     assert live.json()["status"] == "alive"

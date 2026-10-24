@@ -48,6 +48,8 @@ async def test_token_is_limited_to_owned_interview_session_and_session_channel(m
     monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "server-only")
     monkeypatch.setattr(settings, "AGORA_TOKEN_EXPIRATION", 7200)
     calls = []
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
 
     def fake_token(channel_name, uid, role, expire_seconds):
         calls.append((channel_name, uid, role, expire_seconds))
@@ -66,19 +68,23 @@ async def test_token_is_limited_to_owned_interview_session_and_session_channel(m
                 "is_demo": True,
                 "duration_seconds": 300,
             },
+            headers=headers,
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
         before_start = await client.post(
-            "/api/agora/token", json={"session_id": session_id}
+            "/api/agora/token", json={"session_id": session_id}, headers=headers
         )
         assert before_start.status_code == 409
 
-        started = await client.post(f"/api/interviews/sessions/{session_id}/start")
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers=headers
+        )
         assert started.status_code == 200, started.text
         response = await client.post(
             "/api/agora/token",
             json={"session_id": session_id, "channel_name": "attacker-channel"},
+            headers=headers,
         )
         assert response.status_code == 200, response.text
         assert response.json() == {
@@ -92,7 +98,7 @@ async def test_token_is_limited_to_owned_interview_session_and_session_channel(m
         assert "certificate" not in response.json()
 
         missing = await client.post(
-            "/api/agora/token", json={"session_id": str(uuid4())}
+            "/api/agora/token", json={"session_id": str(uuid4())}, headers=headers
         )
         assert missing.status_code == 404
 
@@ -102,6 +108,8 @@ async def test_missing_agora_credentials_returns_text_fallback_error(monkeypatch
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "AGORA_APP_ID", "")
     monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "")
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -113,13 +121,16 @@ async def test_missing_agora_credentials_returns_text_fallback_error(monkeypatch
                 "job_category": "backend engineering",
                 "is_demo": True,
             },
+            headers=headers,
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
-        started = await client.post(f"/api/interviews/sessions/{session_id}/start")
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers=headers
+        )
         assert started.status_code == 200, started.text
         response = await client.post(
-            "/api/agora/token", json={"session_id": session_id}
+            "/api/agora/token", json={"session_id": session_id}, headers=headers
         )
         assert response.status_code == 503
         assert "continue with text input" in response.json()["detail"].lower()
@@ -132,6 +143,8 @@ async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypat
     message_id = str(uuid4())
     candidate_broadcasts = []
     metrics_broadcasts = []
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
 
     async def record_broadcast(session_id, message):
         if message.get("type") == "transcript" and message.get("speaker") == "candidate":
@@ -152,9 +165,12 @@ async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypat
                 "is_demo": True,
                 "duration_seconds": 300,
             },
+            headers=headers,
         )
         session_id = created.json()["id"]
-        started = await client.post(f"/api/interviews/sessions/{session_id}/start")
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers=headers
+        )
         assert started.status_code == 200, started.text
         answer = {
             "speaker": "candidate",
@@ -164,10 +180,10 @@ async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypat
             "language": "en",
         }
         first = await client.post(
-            f"/api/interviews/sessions/{session_id}/transcript", json=answer
+            f"/api/interviews/sessions/{session_id}/transcript", json=answer, headers=headers
         )
         duplicate = await client.post(
-            f"/api/interviews/sessions/{session_id}/transcript", json=answer
+            f"/api/interviews/sessions/{session_id}/transcript", json=answer, headers=headers
         )
         assert first.status_code == 200, first.text
         assert duplicate.status_code == 200, duplicate.text
@@ -193,16 +209,9 @@ async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypat
 def test_websocket_replays_final_segments_and_rejects_other_users(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
-    from app import auth
-
-    async def verify_other_user(_token):
-        return {
-            "id": "other-user",
-            "clerk_id": "other-user",
-            "email": "other-user@example.test",
-        }
-
-    monkeypatch.setattr(auth, "_verify_clerk_token", verify_other_user)
+    other_guest_id = str(uuid4())
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
     with TestClient(app, base_url="http://localhost") as client:
         created = client.post(
             "/api/interviews/sessions",
@@ -213,10 +222,13 @@ def test_websocket_replays_final_segments_and_rejects_other_users(monkeypatch):
                 "is_demo": True,
                 "duration_seconds": 300,
             },
+            headers=headers,
         )
         assert created.status_code == 200, created.text
         demo_session_id = created.json()["id"]
-        started = client.post(f"/api/interviews/sessions/{demo_session_id}/start")
+        started = client.post(
+            f"/api/interviews/sessions/{demo_session_id}/start", headers=headers
+        )
         assert started.status_code == 200, started.text
         with client.websocket_connect(
             f"/api/interviews/sessions/{demo_session_id}/ws?after_sequence=0",
@@ -231,7 +243,7 @@ def test_websocket_replays_final_segments_and_rejects_other_users(monkeypatch):
 
         other = client.post(
             "/api/interviews/sessions",
-            headers={"Authorization": "Bearer other-token"},
+            headers={"X-Guest-Id": other_guest_id},
             json={
                 "role": "Engineer",
                 "resume_text": "Built Python APIs.",
@@ -244,23 +256,17 @@ def test_websocket_replays_final_segments_and_rejects_other_users(monkeypatch):
         assert other.json()["is_demo"] is False
         report_response = client.get(
             f"/api/evaluations/sessions/{other_session_id}/report",
-            headers={"Authorization": "Bearer other-token"},
+            headers={"X-Guest-Id": other_guest_id},
         )
         assert report_response.status_code == 404
         assert "not been generated" in report_response.json()["detail"]
         reports_response = client.get(
             "/api/evaluations/user/reports",
-            headers={"Authorization": "Bearer other-token"},
+            headers={"X-Guest-Id": other_guest_id},
         )
         assert reports_response.json()["reports"] == []
         assert "confidence_score" not in reports_response.text
 
-        async def verify_candidate_token(_token):
-            return {"id": "demo-user-001"}
-
-        monkeypatch.setattr(
-            "app.routers.interviews._verify_clerk_token", verify_candidate_token
-        )
         with pytest.raises(WebSocketDisconnect) as closed:
             with client.websocket_connect(
                 f"/api/interviews/sessions/{other_session_id}/ws?token=valid",

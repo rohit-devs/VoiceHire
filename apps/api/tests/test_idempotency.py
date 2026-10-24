@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from uuid import uuid4
 
 from app.config import settings
 from app.database import async_session
@@ -12,6 +13,8 @@ from app.models import Transcript
 async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -28,13 +31,14 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
                 "interview_type": "behavioral",
                 "company": "Example Corp",
             },
+            headers=headers,
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
         assert created.json()["duration_seconds"] == 300
         assert created.json()["experience_level"] == "senior"
         assert created.json()["interview_type"] == "behavioral"
-        persisted = await client.get(f"/api/interviews/sessions/{session_id}")
+        persisted = await client.get(f"/api/interviews/sessions/{session_id}", headers=headers)
         assert persisted.status_code == 200, persisted.text
         assert persisted.json()["duration_seconds"] == 300
         assert persisted.json()["experience_level"] == "senior"
@@ -43,14 +47,15 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
         premature_answer = await client.post(
             f"/api/interviews/sessions/{session_id}/transcript",
             json={"speaker": "candidate", "message": "I have relevant experience."},
+            headers=headers,
         )
         assert premature_answer.status_code == 409
 
         start_url = f"/api/interviews/sessions/{session_id}/start"
-        started = await client.post(start_url, headers={"Idempotency-Key": "start-1"})
-        duplicate_start = await client.post(start_url)
+        started = await client.post(start_url, headers={"Idempotency-Key": "start-1", **headers})
+        duplicate_start = await client.post(start_url, headers=headers)
         replayed_start = await client.post(
-            start_url, headers={"Idempotency-Key": "start-1"}
+            start_url, headers={"Idempotency-Key": "start-1", **headers}
         )
         assert started.status_code == 200, started.text
         assert started.json()["source"] == "simulated"
@@ -64,12 +69,14 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
         transcript = await client.post(
             f"/api/interviews/sessions/{session_id}/transcript",
             json={"speaker": "candidate", "message": answer},
+            headers=headers,
         )
         assert transcript.status_code == 200, transcript.text
 
         next_question = await client.post(
             f"/api/interviews/sessions/{session_id}/generate-question",
             json={"candidate_transcript": answer},
+            headers=headers,
         )
         assert next_question.status_code == 200, next_question.text
         assert "PostgreSQL query cache" in next_question.json()["question_text"]
@@ -79,17 +86,20 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
         transcript = await client.post(
             f"/api/interviews/sessions/{session_id}/transcript",
             json={"speaker": "candidate", "message": injection},
+            headers=headers,
         )
         assert transcript.status_code == 200, transcript.text
         next_question = await client.post(
             f"/api/interviews/sessions/{session_id}/generate-question",
             json={"candidate_transcript": injection},
+            headers=headers,
         )
         assert next_question.status_code == 200, next_question.text
         assert "system prompt" not in next_question.json()["question_text"].lower()
         assert "ignore previous instructions" not in next_question.json()["question_text"].lower()
         analytics = await client.get(
-            f"/api/evaluations/sessions/{session_id}/analytics"
+            f"/api/evaluations/sessions/{session_id}/analytics",
+            headers=headers,
         )
         assert analytics.status_code == 200
         assert analytics.json()["source"] == "simulated"
@@ -106,9 +116,11 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
             assert all(row.source == "simulated" for row in rows)
 
         end_url = f"/api/interviews/sessions/{session_id}/end"
-        ended = await client.post(end_url, headers={"Idempotency-Key": "end-1"})
-        duplicate_end = await client.post(end_url)
-        replayed_end = await client.post(end_url, headers={"Idempotency-Key": "end-1"})
+        ended = await client.post(end_url, headers={"Idempotency-Key": "end-1", **headers})
+        duplicate_end = await client.post(end_url, headers=headers)
+        replayed_end = await client.post(
+            end_url, headers={"Idempotency-Key": "end-1", **headers}
+        )
         assert ended.status_code == 200, ended.text
         assert duplicate_end.status_code == 200
         assert duplicate_end.json()["current_state"] == "completed"
@@ -116,6 +128,6 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
 
         report = await client.post(
             f"/api/evaluations/sessions/{session_id}/report/generate",
-            headers={"Idempotency-Key": "report-1"},
+            headers={"Idempotency-Key": "report-1", **headers},
         )
         assert report.status_code == 409, report.text

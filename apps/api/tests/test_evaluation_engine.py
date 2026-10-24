@@ -270,6 +270,7 @@ async def test_missing_transcript_data_has_null_metrics_and_skips_provider():
 @pytest.mark.asyncio
 async def test_report_returns_provider_fallback_message_when_provider_is_disabled(monkeypatch):
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -281,6 +282,7 @@ async def test_report_returns_provider_fallback_message_when_provider_is_disable
                 "job_description": "Own reliable backend services.",
                 "is_demo": False,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -313,7 +315,8 @@ async def test_report_returns_provider_fallback_message_when_provider_is_disable
             await db.commit()
 
         response = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
     assert response.status_code == 503, response.text
     assert response.json()["detail"]["user_message"]
@@ -326,6 +329,7 @@ async def test_report_is_persisted_idempotently_with_measured_metrics_and_coachi
     provider = ValidEvaluationProvider()
     monkeypatch.setattr(settings, "GROQ_API_KEY", "sk-test-evaluation-provider-key")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -338,6 +342,7 @@ async def test_report_is_persisted_idempotently_with_measured_metrics_and_coachi
                 "is_demo": False,
                 "duration_seconds": 600,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -384,7 +389,8 @@ async def test_report_is_persisted_idempotently_with_measured_metrics_and_coachi
             await db.commit()
 
         generated = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert generated.status_code == 200, generated.text
         report = generated.json()
@@ -402,27 +408,32 @@ async def test_report_is_persisted_idempotently_with_measured_metrics_and_coachi
         assert provider.calls == 1
 
         repeated = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         reloaded = await client.get(
-            f"/api/evaluations/sessions/{session_id}/report"
+            f"/api/evaluations/sessions/{session_id}/report",
+            headers={"X-Guest-Id": guest_id},
         )
         assert repeated.json() == report
         assert reloaded.json() == report
         assert provider.calls == 1
         coaching = await client.get(
-            f"/api/evaluations/sessions/{session_id}/coaching-plan"
+            f"/api/evaluations/sessions/{session_id}/coaching-plan",
+            headers={"X-Guest-Id": guest_id},
         )
         assert coaching.status_code == 200, coaching.text
         assert coaching.json()["total_days"] == 7
         updated = await client.post(
             f"/api/evaluations/sessions/{session_id}/coaching-plan/update?day=1",
             json={"checked": True, "notes": "Completed this exercise."},
+            headers={"X-Guest-Id": guest_id},
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["completed_days"] == 1
         updated_plan = await client.get(
-            f"/api/evaluations/sessions/{session_id}/coaching-plan"
+            f"/api/evaluations/sessions/{session_id}/coaching-plan",
+            headers={"X-Guest-Id": guest_id},
         )
         assert updated_plan.json()["days"][0]["completed"] is True
         assert updated_plan.json()["progress_notes"]["1"] == "Completed this exercise."
@@ -435,6 +446,7 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
     provider = InvalidEvaluationProvider()
     monkeypatch.setattr(settings, "GROQ_API_KEY", "sk-test-evaluation-provider-key")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -446,11 +458,13 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
                 "job_category": "backend",
                 "is_demo": True,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         demo_id = created.json()["id"]
         blocked_demo = await client.post(
-            f"/api/evaluations/sessions/{demo_id}/report/generate"
+            f"/api/evaluations/sessions/{demo_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert blocked_demo.status_code == 409
         assert provider.calls == 0
@@ -463,13 +477,14 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
                 "job_category": "backend",
                 "is_demo": False,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert real.status_code == 200, real.text
         real_id = real.json()["id"]
         async with async_session() as db:
             other_user = User(
                 id="evaluation-other-user",
-                clerk_id="evaluation-other-user",
+                guest_id="evaluation-other-user",
                 email="other@example.test",
             )
             db.add(other_user)
@@ -477,7 +492,8 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
             session.user_id = other_user.id
             await db.commit()
         unauthorized = await client.get(
-            f"/api/evaluations/sessions/{real_id}/report"
+            f"/api/evaluations/sessions/{real_id}/report",
+            headers={"X-Guest-Id": guest_id},
         )
         assert unauthorized.status_code == 403
 
@@ -489,6 +505,7 @@ async def test_invalid_provider_output_is_persisted_as_failed_report(monkeypatch
     provider = InvalidEvaluationProvider()
     monkeypatch.setattr(settings, "GROQ_API_KEY", "sk-test-evaluation-provider-key")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -500,6 +517,7 @@ async def test_invalid_provider_output_is_persisted_as_failed_report(monkeypatch
                 "job_category": "backend",
                 "is_demo": False,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -529,7 +547,8 @@ async def test_invalid_provider_output_is_persisted_as_failed_report(monkeypatch
             )
             await db.commit()
         response = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert response.status_code == 200, response.text
         failed = response.json()
@@ -537,7 +556,10 @@ async def test_invalid_provider_output_is_persisted_as_failed_report(monkeypatch
         assert failed["error"]
         assert failed["ai_assessments"] is None
         assert provider.calls == 2
-        reloaded = await client.get(f"/api/evaluations/sessions/{session_id}/report")
+        reloaded = await client.get(
+            f"/api/evaluations/sessions/{session_id}/report",
+            headers={"X-Guest-Id": guest_id},
+        )
         assert reloaded.json() == failed
         assert provider.calls == 2
 
@@ -561,6 +583,7 @@ async def test_ollama_evaluation_does_not_reserve_or_reconcile_cloud_tokens(monk
     monkeypatch.setattr(evaluations, "reserve_tokens", fake_reserve)
     monkeypatch.setattr(evaluations, "reconcile_tokens", fake_reconcile)
 
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -573,6 +596,7 @@ async def test_ollama_evaluation_does_not_reserve_or_reconcile_cloud_tokens(monk
                 "is_demo": False,
                 "duration_seconds": 600,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -607,7 +631,8 @@ async def test_ollama_evaluation_does_not_reserve_or_reconcile_cloud_tokens(monk
             initial_session_tokens = session.llm_tokens_used
 
         generated = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert generated.status_code == 200, generated.text
         report = generated.json()
@@ -646,6 +671,7 @@ async def test_groq_evaluation_reserves_and_reconciles_tokens(monkeypatch):
     monkeypatch.setattr(evaluations, "reserve_tokens", spy_reserve)
     monkeypatch.setattr(evaluations, "reconcile_tokens", spy_reconcile)
 
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -658,6 +684,7 @@ async def test_groq_evaluation_reserves_and_reconciles_tokens(monkeypatch):
                 "is_demo": False,
                 "duration_seconds": 600,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -692,7 +719,8 @@ async def test_groq_evaluation_reserves_and_reconciles_tokens(monkeypatch):
             initial_session_tokens = session.llm_tokens_used
 
         generated = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert generated.status_code == 200, generated.text
         report = generated.json()
@@ -726,6 +754,7 @@ async def test_ollama_evaluation_failure_does_not_reconcile_unreserved_tokens(mo
     monkeypatch.setattr(evaluations, "reserve_tokens", fake_reserve)
     monkeypatch.setattr(evaluations, "reconcile_tokens", fake_reconcile)
 
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -737,6 +766,7 @@ async def test_ollama_evaluation_failure_does_not_reconcile_unreserved_tokens(mo
                 "job_category": "backend",
                 "is_demo": False,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -770,7 +800,8 @@ async def test_ollama_evaluation_failure_does_not_reconcile_unreserved_tokens(mo
             initial_session_tokens = session.llm_tokens_used
 
         response = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert response.status_code == 200, response.text
         failed = response.json()
@@ -792,6 +823,7 @@ async def test_groq_token_budget_exhaustion_remains_enforced(monkeypatch):
     provider = ValidEvaluationProvider(name="groq")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
 
+    guest_id = str(uuid4())
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -803,6 +835,7 @@ async def test_groq_token_budget_exhaustion_remains_enforced(monkeypatch):
                 "job_category": "backend",
                 "is_demo": False,
             },
+            headers={"X-Guest-Id": guest_id},
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
@@ -834,7 +867,8 @@ async def test_groq_token_budget_exhaustion_remains_enforced(monkeypatch):
             await db.commit()
 
         response = await client.post(
-            f"/api/evaluations/sessions/{session_id}/report/generate"
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
         )
         assert response.status_code == 200, response.text
         failed = response.json()

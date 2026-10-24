@@ -64,7 +64,7 @@ async def test_init_db_migrates_empty_sqlite_to_working_schema(tmp_path):
         async with sessions() as db:
             user = User(
                 id="migration-user",
-                clerk_id="migration-user-clerk",
+                guest_id="migration-user-guest",
                 email="migration-user@example.test",
             )
             db.add(user)
@@ -96,7 +96,7 @@ async def test_schema_constraints_and_idempotency_key_uniqueness(tmp_path):
             db.add(
                 User(
                     id="constraint-user",
-                    clerk_id="constraint-clerk",
+                    guest_id="constraint-guest",
                     email="constraint@example.test",
                 )
             )
@@ -105,7 +105,7 @@ async def test_schema_constraints_and_idempotency_key_uniqueness(tmp_path):
             db.add(
                 User(
                     id="duplicate-user",
-                    clerk_id="constraint-clerk",
+                    guest_id="constraint-guest",
                     email="duplicate@example.test",
                 )
             )

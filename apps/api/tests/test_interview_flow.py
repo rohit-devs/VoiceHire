@@ -133,18 +133,21 @@ async def test_fake_provider_handles_uncertain_and_short_answers(answer, expecte
 async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
         created = await client.post(
             "/api/interviews/sessions",
             json={"role": "Engineer", "is_demo": True},
+            headers=headers,
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
-        start = await client.post(f"/api/interviews/sessions/{session_id}/start")
+        start = await client.post(f"/api/interviews/sessions/{session_id}/start", headers=headers)
         assert start.status_code == 409, start.text
-        state = await client.get(f"/api/interviews/sessions/{session_id}/state")
+        state = await client.get(f"/api/interviews/sessions/{session_id}/state", headers=headers)
         assert state.json()["current_state"] == SessionState.CREATED.value
 
     async with async_session() as db:
@@ -153,7 +156,7 @@ async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(mon
         db.add(
             User(
                 id=user_id,
-                clerk_id=user_id,
+                guest_id=user_id,
                 email=f"{user_id}@example.test",
             )
         )
@@ -228,6 +231,8 @@ async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(mon
 async def test_question_budget_closes_without_exceeding_question_count(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -240,10 +245,13 @@ async def test_question_budget_closes_without_exceeding_question_count(monkeypat
                 "duration_seconds": 300,
                 "is_demo": True,
             },
+            headers=headers,
         )
         assert created.status_code == 200, created.text
         session_id = created.json()["id"]
-        started = await client.post(f"/api/interviews/sessions/{session_id}/start")
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers=headers
+        )
         assert started.status_code == 200, started.text
 
         answer = "I improved API latency by measuring and optimizing database queries."
@@ -251,31 +259,39 @@ async def test_question_budget_closes_without_exceeding_question_count(monkeypat
             submitted = await client.post(
                 f"/api/interviews/sessions/{session_id}/transcript",
                 json={"speaker": "candidate", "message": answer},
+                headers=headers,
             )
             assert submitted.status_code == 200, submitted.text
             next_question = await client.post(
                 f"/api/interviews/sessions/{session_id}/generate-question",
                 json={"candidate_transcript": answer},
+                headers=headers,
             )
             assert next_question.status_code == 200, next_question.text
             answer = f"My next example is request number {_ + 1} and its measured outcome."
 
-        state = await client.get(f"/api/interviews/sessions/{session_id}/state")
+        state = await client.get(
+            f"/api/interviews/sessions/{session_id}/state", headers=headers
+        )
         assert state.json()["question_count"] == 6
         assert state.json()["current_state"] == SessionState.INTERVIEWING.value
 
         submitted = await client.post(
             f"/api/interviews/sessions/{session_id}/transcript",
             json={"speaker": "candidate", "message": answer},
+            headers=headers,
         )
         assert submitted.status_code == 200, submitted.text
         completed = await client.post(
             f"/api/interviews/sessions/{session_id}/generate-question",
             json={"candidate_transcript": answer},
+            headers=headers,
         )
         assert completed.status_code == 200, completed.text
         assert completed.json()["state"] == SessionState.COMPLETED.value
         assert completed.json()["question_text"].startswith("Thank you for your time")
-        state = await client.get(f"/api/interviews/sessions/{session_id}/state")
+        state = await client.get(
+            f"/api/interviews/sessions/{session_id}/state", headers=headers
+        )
         assert state.json()["question_count"] == 6
         assert state.json()["current_state"] == SessionState.COMPLETED.value
