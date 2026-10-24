@@ -49,7 +49,7 @@ class User(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True, default=_id)
     email: Mapped[str | None] = mapped_column(String(255), unique=True)
-    clerk_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    guest_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     first_name: Mapped[str | None] = mapped_column(String(100))
     last_name: Mapped[str | None] = mapped_column(String(100))
     avatar_url: Mapped[str | None] = mapped_column(Text)
