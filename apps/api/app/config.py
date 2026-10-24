@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     CLERK_SECRET_KEY: str = ""
     CLERK_JWT_JWKS_URL: str = ""
 
+    # ── Better Auth ──
+    # BETTER_AUTH_SECRET: 32+ char random string (generate with: openssl rand -hex 32)
+    # BETTER_AUTH_URL: public base URL of the Next.js app (e.g. https://voicehire.vercel.app)
+    # BETTER_AUTH_JWKS_URL: the BA JWKS endpoint (defaults to <BETTER_AUTH_URL>/api/auth/jwks)
+    BETTER_AUTH_SECRET: str = ""
+    BETTER_AUTH_URL: str = "http://localhost:3000"
+    BETTER_AUTH_JWKS_URL: str = ""
+
     # ── CORS / Hosts ──
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     ALLOWED_HOSTS: str = "localhost,127.0.0.1,*.vercel.app"
@@ -70,6 +78,19 @@ class Settings(BaseSettings):
     @property
     def clerk_enabled(self) -> bool:
         return bool(self.CLERK_SECRET_KEY and not self.CLERK_SECRET_KEY.startswith("sk_test_placeholder") and len(self.CLERK_SECRET_KEY) > 20)
+
+    @property
+    def better_auth_enabled(self) -> bool:
+        """True when BETTER_AUTH_SECRET is set (>=32 chars, same threshold as web side)."""
+        return bool(self.BETTER_AUTH_SECRET and len(self.BETTER_AUTH_SECRET) >= 32)
+
+    @property
+    def better_auth_jwks_url(self) -> str:
+        """JWKS endpoint — explicit override or derived from BETTER_AUTH_URL."""
+        if self.BETTER_AUTH_JWKS_URL:
+            return self.BETTER_AUTH_JWKS_URL
+        base = self.BETTER_AUTH_URL.rstrip("/")
+        return f"{base}/api/auth/jwks"
 
     @property
     def is_postgres(self) -> bool:

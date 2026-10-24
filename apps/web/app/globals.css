@@ -155,3 +155,31 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.vh-display {
+  font-family: Impact, "Haettenschweiler", "Arial Narrow Bold", "Arial Narrow", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.9;
+  font-weight: 400;
+}
+.vh-label {
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+/* ...existing contents above, untouched... */
+
+.vh-display {
+  font-family: Impact, "Haettenschweiler", "Arial Narrow Bold", "Arial Narrow", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.9;
+  font-weight: 400;
+}
+
+.vh-label {
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+

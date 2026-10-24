@@ -9,26 +9,37 @@ interface MetricCardProps {
   color: string;
 }
 
-export function MetricCard({ label, value, icon: Icon, color }: MetricCardProps) {
+export function MetricCard({ label, value, icon: Icon }: MetricCardProps) {
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.04]">
+    <div className="group relative border border-neutral-800 bg-[#0d0d0d] p-5 transition-colors duration-200 hover:border-[#e8321e]">
+      {/* Red corner tick */}
+      <span aria-hidden="true" className="absolute left-0 top-0 h-2 w-2 bg-[#e8321e]" />
+
       <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1.5 min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground truncate">
+        <div className="min-w-0">
+          <p className="vh-label truncate text-[10px] font-bold text-neutral-500">
             {label}
           </p>
-          <p className="text-2xl font-bold text-white tracking-tight">
+          <p className="vh-display mt-3 text-5xl text-white">
             {value.toFixed(2)}
-            <span className="text-sm text-muted-foreground font-normal">/5</span>
+            <span className="ml-1.5 align-baseline text-lg text-[#e8321e]">/5</span>
           </p>
         </div>
-        <div className={`rounded-lg bg-gradient-to-br ${color} p-2 shadow-sm flex-shrink-0`}>
-          <Icon className="h-3.5 w-3.5 text-white" />
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center border border-[#e8321e]/40 bg-[#e8321e]/10 text-[#e8321e] transition-colors group-hover:bg-[#e8321e] group-hover:text-white">
+          <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className="mt-3 h-1 rounded-full bg-white/[0.08] overflow-hidden">
+
+      <div
+        className="mt-5 h-[3px] w-full overflow-hidden bg-neutral-800"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={5}
+        aria-valuenow={value}
+        aria-label={label}
+      >
         <div
-          className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-700`}
+          className="h-full bg-[#e8321e] transition-all duration-700"
           style={{ width: `${Math.max(0, Math.min(100, value * 20))}%` }}
         />
       </div>

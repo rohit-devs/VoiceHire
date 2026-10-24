@@ -1,4 +1,4 @@
-export type AuthMode = "clerk" | "local-demo" | "unavailable";
+export type AuthMode = "clerk" | "better-auth" | "local-demo" | "unavailable";
 
 export function getAuthMode(
   env: Record<string, string | undefined> = process.env,
@@ -9,8 +9,12 @@ export function getAuthMode(
   const hasClerk = Boolean(
     env.CLERK_SECRET_KEY && env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   );
+  const hasBetterAuth = Boolean(
+    env.BETTER_AUTH_SECRET && env.BETTER_AUTH_SECRET.length >= 32,
+  );
 
   if (hasClerk) return "clerk";
+  if (hasBetterAuth) return "better-auth";
   if (isDemo && isDev) return "local-demo";
   return "unavailable";
 }
