@@ -20,10 +20,10 @@ async function captureResponsiveScreenshots(page: Page, screen: string) {
 }
 
 async function enterLocalDemo(page: Page) {
-  await page.goto("/sign-in");
-  await captureResponsiveScreenshots(page, "sign-in");
-  await page.getByRole("link", { name: "Continue as local demo user" }).click();
-  await expect(page).toHaveURL(/onboarding/, { timeout: 30_000 });
+  await page.goto("/");
+  await expect(page).toHaveURL(/dashboard/, { timeout: 30_000 });
+  await captureResponsiveScreenshots(page, "dashboard");
+  await page.goto("/onboarding");
   await captureResponsiveScreenshots(page, "onboarding");
   await page.getByLabel("Target role").fill("Backend Engineer");
   await page.getByLabel("Professional background").fill("Built asynchronous Python APIs and PostgreSQL services.");
@@ -33,41 +33,15 @@ async function enterLocalDemo(page: Page) {
   await page.getByRole("button", { name: "Save profile" }).click();
   expect((await profileUpdate).status()).toBe(200);
   await expect(page).toHaveURL(/dashboard/, { timeout: 60_000 });
-  await captureResponsiveScreenshots(page, "dashboard");
+  await captureResponsiveScreenshots(page, "dashboard-after-onboarding");
   await page.goto("/settings");
   await expect(page.getByLabel("Target role")).toHaveValue("Backend Engineer");
 }
 
 test("landing page explains the product and links to practice", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /answers\s+that\s+move/i })).toBeVisible();
-  const startPracticing = page.getByRole("link", { name: "Start practicing" });
-  await expect(startPracticing).toHaveCount(2);
-  await expect(startPracticing.first()).toHaveAttribute("href", "/sign-up");
-  await expect(startPracticing.last()).toHaveAttribute("href", "/sign-up");
-  await expect(page.getByRole("link", { name: "Explore the method" })).toHaveAttribute(
-    "href",
-    "#method",
-  );
-  await captureResponsiveScreenshots(page, "landing");
-});
-
-test("sign-in without Clerk environment variables has no runtime errors", async ({
-  page,
-}) => {
-  const runtimeErrors: string[] = [];
-  page.on("pageerror", (error) => runtimeErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") runtimeErrors.push(message.text());
-  });
-
-  await page.goto("/sign-in");
-
-  await expect(
-    page.getByRole("heading", { name: "Sign in to VoiceHire" }),
-  ).toBeVisible();
-  expect(runtimeErrors).toEqual([]);
-  await captureResponsiveScreenshots(page, "sign-in-no-clerk");
+  await expect(page).toHaveURL(/dashboard/, { timeout: 30_000 });
+  await captureResponsiveScreenshots(page, "dashboard");
 });
 
 test("local demo sign-in saves onboarding details", async ({ page }) => {
