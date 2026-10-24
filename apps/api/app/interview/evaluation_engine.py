@@ -316,6 +316,8 @@ async def generate_assessment(
             "rubric_version": rubric["version"],
             "measured_metrics": metrics,
             "ai_assessments": output.model_dump(mode="json"),
+            "provider": completion.provider or type(provider).__name__.lower(),
+            "model": completion.model or getattr(provider, "model", "unknown"),
             "error": None,
             "tokens_used": tokens_used,
         }

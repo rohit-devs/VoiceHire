@@ -21,8 +21,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./voicehire_local.db"
 
     # ── AI ──
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_FAST_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_STRONG_MODEL: str = "llama-3.3-70b-versatile"
+    DEEPGRAM_API_KEY: str = ""
+    DEEPGRAM_MODEL: str = "nova-3"
     EVALUATION_RUBRIC_WEIGHTS: str = ""
 
     # ── Agora ──
@@ -47,8 +51,12 @@ class Settings(BaseSettings):
         return [x.strip() for x in self.ALLOWED_HOSTS.split(",") if x.strip()]
 
     @property
-    def openai_enabled(self) -> bool:
-        return bool(self.OPENAI_API_KEY) and len(self.OPENAI_API_KEY) > 20
+    def groq_enabled(self) -> bool:
+        return bool(self.GROQ_API_KEY) and len(self.GROQ_API_KEY) > 20
+
+    @property
+    def deepgram_enabled(self) -> bool:
+        return bool(self.DEEPGRAM_API_KEY) and len(self.DEEPGRAM_API_KEY) > 20
 
     @property
     def agora_enabled(self) -> bool:

@@ -20,6 +20,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 let _authToken: string | null = null;
 let _authTokenProvider: (() => Promise<string | null>) | null = null;
 
+function apiErrorMessage(payload: { detail?: unknown } | null, fallback: string): string {
+  const detail = payload?.detail;
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "object" && detail !== null && "user_message" in detail) {
+    const userMessage = Reflect.get(detail, "user_message");
+    if (typeof userMessage === "string") return userMessage;
+  }
+  return fallback;
+}
+
 export function setAuthToken(token: string | null) {
   _authToken = token;
 }
@@ -52,11 +62,39 @@ class ApiInterviewService implements InterviewService {
 
     if (!res.ok) {
       const error: { detail?: unknown } | null = await res.json().catch(() => null);
-      const detail = typeof error?.detail === "string" ? error.detail : res.statusText;
-      throw new Error(detail || `API error: ${res.status}`);
+      throw new Error(apiErrorMessage(error, res.statusText || `API error: ${res.status}`));
     }
 
     return res.json() as Promise<T>;
+  }
+
+  async getSTTProvider(): Promise<string> {
+    const response = await this.request<{
+      providers?: { stt?: { using?: string } };
+    }>("/api/health/ready");
+    const provider = response.providers?.stt?.using;
+    if (!provider) throw new Error("Speech recognition provider status is unavailable.");
+    return provider;
+  }
+
+  async transcribeAudio(
+    sessionId: string,
+    audio: Blob,
+  ): Promise<{ text: string; provider: string; model: string }> {
+    const token = await getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `******`;
+    const body = new FormData();
+    body.append("audio", audio, "answer.webm");
+    const response = await fetch(
+      `${API_URL}/api/stt/transcribe?session_id=${encodeURIComponent(sessionId)}`,
+      { method: "POST", headers, body },
+    );
+    if (!response.ok) {
+      const error: { detail?: unknown } | null = await response.json().catch(() => null);
+      throw new Error(apiErrorMessage(error, response.statusText || `API error: ${response.status}`));
+    }
+    return response.json() as Promise<{ text: string; provider: string; model: string }>;
   }
 
   async createInterview(config: Partial<InterviewConfig> & {

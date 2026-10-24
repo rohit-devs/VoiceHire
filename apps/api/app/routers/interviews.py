@@ -20,11 +20,7 @@ from app.websocket_manager import connection_manager
 from app.interview import InterviewOrchestrator, SessionState
 from app.interview.interview_blueprint import BlueprintBuilder
 from app.interview.jd_matcher import JDMatcher
-from app.interview.llm_provider import (
-    FakeProvider,
-    LLMUnavailable,
-    OpenAIProvider,
-)
+from app.interview.llm_provider import LLMUnavailable
 from app.interview.prompt_chaining import (
     MAX_OUTPUT_TOKENS,
     PromptChainCoordinator,
@@ -37,6 +33,8 @@ from app.interview.token_budget import (
     reserve_tokens,
 )
 from app.config import settings
+from app.providers import DemoProvider, ProviderError, get_llm_provider
+from app.providers.legacy_adapter import LegacyProviderAdapter
 from app.models import CandidateProfile, InterviewSession, Transcript
 from app.idempotency import cached_response, store_response
 from app.interview.voice_metrics import calculate_voice_metrics
@@ -188,13 +186,21 @@ async def _broadcast_voice_metrics(
 
 
 def _make_coordinator(is_demo: bool) -> PromptChainCoordinator | None:
+    provider = get_llm_provider()
     if is_demo:
         if not settings.DEMO_MODE:
             return None
-        return PromptChainCoordinator(FakeProvider())
-    if not settings.openai_enabled:
+        provider = DemoProvider()
+    elif provider.simulated:
         return None
-    return PromptChainCoordinator(OpenAIProvider(settings.OPENAI_API_KEY))
+    return PromptChainCoordinator(LegacyProviderAdapter(provider))
+
+
+def _provider_http_exception(error: ProviderError) -> HTTPException:
+    return HTTPException(
+        status_code=429 if error.status == 429 else 503,
+        detail={"user_message": error.user_message},
+    )
 
 
 async def _build_session_blueprint(
@@ -497,7 +503,7 @@ async def start_interview(
                 detail={
                     "degraded": True,
                     "state": SessionState.FAILED.value,
-                    "message": "Question generation is unavailable; configure the OpenAI provider or explicitly create a simulated demo session.",
+                    "message": "Question generation is unavailable. Try again shortly, continue in text mode, or start a simulated demo session.",
                 },
             )
 
@@ -543,6 +549,14 @@ async def start_interview(
             )
         except TokenBudgetExceeded as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except ProviderError as exc:
+            if reservation:
+                await reconcile_tokens(
+                    db, user_id=user["id"], session_id=session_id,
+                    reserved_tokens=reservation, actual_tokens=0
+                )
+            await orchestrator.transition_to(SessionState.FAILED, "llm_provider_unavailable")
+            raise _provider_http_exception(exc) from exc
         except LLMUnavailable as exc:
             if reservation:
                 await reconcile_tokens(
@@ -595,6 +609,8 @@ async def start_interview(
         )
         return response
 
+    except ProviderError as exc:
+        raise _provider_http_exception(exc) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -933,7 +949,7 @@ async def generate_next_question(
                 detail={
                     "degraded": True,
                     "state": "failed",
-                    "message": "Question generation is unavailable; configure the OpenAI provider.",
+                    "message": "Question generation is temporarily unavailable. Continue in text mode or start a simulated demo session.",
                 },
             )
         blueprint = session.interview_blueprint
@@ -1010,6 +1026,13 @@ async def generate_next_question(
                 )
             try:
                 generated_question = await coordinator.generate_next_question(generation_request)
+            except ProviderError as exc:
+                if reservation:
+                    await reconcile_tokens(
+                        db, user_id=user["id"], session_id=session_id,
+                        reserved_tokens=reservation, actual_tokens=0
+                    )
+                raise _provider_http_exception(exc) from exc
             except LLMUnavailable as exc:
                 if reservation:
                     await reconcile_tokens(
@@ -1072,6 +1095,8 @@ async def generate_next_question(
             "timestamp_ms": transcript.timestamp_ms,
         }
         
+    except ProviderError as exc:
+        raise _provider_http_exception(exc) from exc
     except TokenBudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except HTTPException:

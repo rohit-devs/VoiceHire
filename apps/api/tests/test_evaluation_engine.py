@@ -263,8 +263,8 @@ async def test_missing_transcript_data_has_null_metrics_and_skips_provider():
 
 
 @pytest.mark.asyncio
-async def test_report_fails_explicitly_when_openai_is_not_configured(monkeypatch):
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+async def test_report_returns_provider_fallback_message_when_provider_is_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:
@@ -310,11 +310,8 @@ async def test_report_fails_explicitly_when_openai_is_not_configured(monkeypatch
         response = await client.post(
             f"/api/evaluations/sessions/{session_id}/report/generate"
         )
-    assert response.status_code == 200, response.text
-    report = response.json()
-    assert report["status"] == "failed"
-    assert report["ai_assessments"] is None
-    assert "OpenAI provider is not configured" in report["error"]
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"]["user_message"]
 
 
 @pytest.mark.asyncio
@@ -322,7 +319,7 @@ async def test_report_is_persisted_idempotently_with_measured_metrics_and_coachi
     from app.routers import evaluations
 
     provider = ValidEvaluationProvider()
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test-evaluation-provider-key")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "sk-test-evaluation-provider-key")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
@@ -387,6 +384,8 @@ async def test_report_is_persisted_idempotently_with_measured_metrics_and_coachi
         assert generated.status_code == 200, generated.text
         report = generated.json()
         assert report["status"] == "completed"
+        assert report["provider"] == "validevaluationprovider"
+        assert report["model"] == "unknown"
         assert report["rubric_version"] == "1.0.0"
         assert report["measured_metrics"]["questions_answered"]["value"] == 2
         assert report["measured_metrics"]["words_per_minute"]["value"] == 106.7
@@ -429,7 +428,7 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
     from app.routers import evaluations
 
     provider = InvalidEvaluationProvider()
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test-evaluation-provider-key")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "sk-test-evaluation-provider-key")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
@@ -483,7 +482,7 @@ async def test_invalid_provider_output_is_persisted_as_failed_report(monkeypatch
     from app.routers import evaluations
 
     provider = InvalidEvaluationProvider()
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test-evaluation-provider-key")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "sk-test-evaluation-provider-key")
     monkeypatch.setattr(evaluations, "_evaluation_provider", lambda: provider)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"

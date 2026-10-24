@@ -26,7 +26,50 @@ Edit `.env` for local SQLite by changing `DATABASE_URL` to:
 sqlite+aiosqlite:///./voicehire_local.db
 ```
 
-Use a fresh local database file for Alembic setup. Existing legacy SQLite files without an Alembic version stamp are not auto-adopted; keep them as-is and use a new filename rather than deleting or reusing them. Keep `APP_ENV=development` and `DEMO_MODE=true` only for local simulated usage. The local demo user is shared and has no Clerk authentication; never use it with real candidate data. Clerk, OpenAI, and Agora values may remain empty for text/demo use.
+Use a fresh local database file for Alembic setup. Existing legacy SQLite files without an Alembic version stamp are not auto-adopted; keep them as-is and use a new filename rather than deleting or reusing them. Keep `APP_ENV=development` and `DEMO_MODE=true` only for local simulated usage. The local demo user is shared and has no Clerk authentication; never use it with real candidate data. Groq, Deepgram, Clerk, and Agora values may remain empty for the zero-credential demo.
+
+## Optional free-tier provider keys
+
+The simulated demo runs without any provider keys. Add real provider keys only to the
+API host's environment or an untracked local `.env`; never add them to a `NEXT_PUBLIC_*`
+variable or commit a populated environment file.
+
+### Groq (interviewer and evaluation LLM)
+
+1. Create an account at <https://console.groq.com/>.
+2. Create an API key in the Groq console's API Keys page:
+   <https://console.groq.com/keys>.
+3. Set `GROQ_API_KEY` in the API environment. `GROQ_BASE_URL`,
+   `GROQ_FAST_MODEL`, and `GROQ_STRONG_MODEL` are configurable there as well.
+
+The fast model is used for interviewer turns; the stronger model is used for reports.
+Groq model availability and free-tier limits can change; check the console before
+choosing or changing a model.
+
+### Deepgram (streaming speech recognition)
+
+1. Create an account at <https://console.deepgram.com/>.
+2. Create an API key in the console's API Keys section.
+3. Set `DEEPGRAM_API_KEY` in the API environment. The default
+   `DEEPGRAM_MODEL=nova-3` can be overridden there.
+
+The key stays server-side: browser audio is forwarded to the API, which connects to
+Deepgram. When the key is absent or streaming is unavailable, the browser uses Web
+Speech recognition when supported, with typed answers always available. Confirm the
+current free usage and model availability in the Deepgram console.
+
+### Clerk (optional for local demo, required for authenticated accounts)
+
+Create a Clerk application at <https://dashboard.clerk.com/>. Configure the web
+publishable key in `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and the server secret/JWKS
+settings in the web/API environments as described in the Clerk dashboard. Keep the
+secret key and JWKS URL server-only. Without Clerk keys, use the local simulated demo.
+
+### Agora (optional RTC transport)
+
+If using Agora RTC, create an app in the Agora console at <https://console.agora.io/>
+and set its App ID and App Certificate on the API and web environments as documented
+there. Agora is optional; browser speech and text interview paths do not require it.
 
 Create `apps\web\.env.local` with the explicit development/demo flags and the server-side URL used by the Next.js API proxy. Leave `NEXT_PUBLIC_API_URL` unset so browser requests use same-origin relative `/api` URLs:
 
@@ -180,10 +223,10 @@ python -m pytest apps/api/tests/ -v
 pnpm --filter @voicehire/api db:migrate
 ```
 
-Playwright starts its own API and web servers, uses a fresh temporary SQLite database, and runs in explicit local demo mode. It does not require Clerk, OpenAI, or Agora credentials. The demo interview path intentionally does not create a real evaluation or coaching plan; authenticated real-session evaluation is covered by API tests with a deterministic fake provider.
+Playwright starts its own API and web servers, uses a fresh temporary SQLite database, and runs in explicit local demo mode. It does not require Clerk, Groq, Deepgram, or Agora credentials. The demo interview path intentionally does not create a real evaluation or coaching plan; authenticated real-session evaluation is covered by API tests with a deterministic fake provider.
 
 ## Environment and credentials
 
-The root `.env.example` lists API, Compose, and public web build variables. `DATABASE_URL`, `API_INTERNAL_URL`, `OPENAI_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. The browser uses relative API URLs by default; only the optional `NEXT_PUBLIC_API_URL` override and Clerk publishable key may be exposed to the browser. Never put a server-only key in a `NEXT_PUBLIC_*` variable or commit a populated `.env`.
+The root `.env.example` lists API, Compose, and public web build variables. `DATABASE_URL`, `API_INTERNAL_URL`, `GROQ_API_KEY`, `DEEPGRAM_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. The browser uses relative API URLs by default; only the optional `NEXT_PUBLIC_API_URL` override and Clerk publishable key may be exposed to the browser. Never put a server-only key in a `NEXT_PUBLIC_*` variable or commit a populated `.env`.
 
 Deployment settings and platform commands are in [DEPLOYMENT.md](./DEPLOYMENT.md). Schema ownership details are in [docs/database-setup.md](./docs/database-setup.md). Common failures are covered by [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).

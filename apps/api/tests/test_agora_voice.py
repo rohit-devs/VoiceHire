@@ -43,7 +43,7 @@ def test_agora_token_uses_absolute_expiry_and_rejects_long_lifetime(monkeypatch)
 @pytest.mark.asyncio
 async def test_token_is_limited_to_owned_interview_session_and_session_channel(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     monkeypatch.setattr(settings, "AGORA_APP_ID", "a" * 32)
     monkeypatch.setattr(settings, "AGORA_APP_CERTIFICATE", "server-only")
     monkeypatch.setattr(settings, "AGORA_TOKEN_EXPIRATION", 7200)
@@ -128,7 +128,7 @@ async def test_missing_agora_credentials_returns_text_fallback_error(monkeypatch
 @pytest.mark.asyncio
 async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     message_id = str(uuid4())
     candidate_broadcasts = []
     metrics_broadcasts = []
@@ -192,7 +192,7 @@ async def test_duplicate_final_segment_is_persisted_and_broadcast_once(monkeypat
 
 def test_websocket_replays_final_segments_and_rejects_other_users(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     from app import auth
 
     async def verify_other_user(_token):

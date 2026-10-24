@@ -14,6 +14,9 @@ const EMPTY_PROFILE: Omit<UserProfile, "id" | "email"> = {
   default_interview_difficulty: "medium",
 };
 
+const inputClass =
+  "w-full rounded-lg border border-neutral-700 bg-[#141414] px-3 py-2.5 text-sm text-neutral-200 placeholder:text-neutral-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8321e]";
+
 export default function SettingsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [values, setValues] = useState(EMPTY_PROFILE);
@@ -43,7 +46,9 @@ export default function SettingsPage() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,64 +76,153 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <main className="min-h-screen bg-[#0a0a0f] px-4 py-8 text-white sm:px-8 sm:py-10">
+      <main className="min-h-screen bg-[#0a0a0a] px-4 py-8 text-neutral-200 sm:px-8 sm:py-10">
         <section className="mx-auto max-w-3xl">
-          <header className="mb-7">
-            <h1 className="text-2xl font-bold">Settings</h1>
-            <p className="mt-1 text-sm text-slate-300">Manage profile and interview defaults saved to your account.</p>
+          <header className="mb-8">
+            <h1 className="text-2xl font-bold text-white sm:text-3xl">Settings</h1>
+            <p className="mt-1.5 text-sm text-neutral-400">
+              Manage profile and interview defaults saved to your account.
+            </p>
           </header>
+
           {loading ? (
-            <div role="status" className="h-80 animate-pulse rounded-xl bg-white/5" aria-label="Loading settings" />
+            <div
+              role="status"
+              className="h-80 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/50"
+              aria-label="Loading settings"
+            />
           ) : error && !profile ? (
-            <div><p role="alert" className="text-sm text-rose-300">{error}</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300">Retry</button></div>
+            <div className="rounded-xl border border-neutral-800 bg-[#0d0d0d] p-6">
+              <p role="alert" className="text-sm text-rose-300">
+                {error}
+              </p>
+              <button
+                onClick={() => void load()}
+                className="mt-4 rounded-lg bg-[#e8321e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#ff3b2d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8321e]"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
-            <form onSubmit={(event) => void save(event)} className="space-y-6 rounded-xl border border-white/10 bg-white/[0.03] p-5 sm:p-7">
+            <form
+              onSubmit={(event) => void save(event)}
+              className="space-y-6 rounded-xl border border-neutral-800 bg-[#0d0d0d] p-5 sm:p-7"
+            >
               <section className="space-y-4" aria-labelledby="profile-heading">
-                <h2 id="profile-heading" className="text-lg font-semibold">Profile</h2>
-                <p className="text-sm text-slate-300">Account email: {profile?.email}</p>
+                <h2 id="profile-heading" className="text-lg font-semibold text-white">
+                  Profile
+                </h2>
+                <p className="text-sm text-neutral-400">Account email: {profile?.email}</p>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="space-y-2 text-sm">
-                    <span>First name</span>
-                    <input value={values.first_name ?? ""} onChange={(event) => setValues({ ...values, first_name: event.target.value })} maxLength={100} className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300" />
+                    <span className="text-neutral-300">First name</span>
+                    <input
+                      value={values.first_name ?? ""}
+                      onChange={(e) => setValues({ ...values, first_name: e.target.value })}
+                      maxLength={100}
+                      className={inputClass}
+                    />
                   </label>
                   <label className="space-y-2 text-sm">
-                    <span>Last name</span>
-                    <input value={values.last_name ?? ""} onChange={(event) => setValues({ ...values, last_name: event.target.value })} maxLength={100} className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300" />
+                    <span className="text-neutral-300">Last name</span>
+                    <input
+                      value={values.last_name ?? ""}
+                      onChange={(e) => setValues({ ...values, last_name: e.target.value })}
+                      maxLength={100}
+                      className={inputClass}
+                    />
                   </label>
                 </div>
+
                 <label className="block space-y-2 text-sm">
-                  <span>Target role</span>
-                  <input value={values.target_role ?? ""} onChange={(event) => setValues({ ...values, target_role: event.target.value })} maxLength={100} className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300" />
+                  <span className="text-neutral-300">Target role</span>
+                  <input
+                    value={values.target_role ?? ""}
+                    onChange={(e) => setValues({ ...values, target_role: e.target.value })}
+                    maxLength={100}
+                    className={inputClass}
+                  />
                 </label>
+
                 <label className="block space-y-2 text-sm">
-                  <span>Professional background</span>
-                  <textarea value={values.background ?? ""} onChange={(event) => setValues({ ...values, background: event.target.value })} maxLength={20000} rows={5} className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300" />
+                  <span className="text-neutral-300">Professional background</span>
+                  <textarea
+                    value={values.background ?? ""}
+                    onChange={(e) => setValues({ ...values, background: e.target.value })}
+                    maxLength={20000}
+                    rows={5}
+                    className={inputClass}
+                  />
                 </label>
               </section>
-              <section className="space-y-4 border-t border-white/10 pt-5" aria-labelledby="preferences-heading">
-                <h2 id="preferences-heading" className="text-lg font-semibold">Default interview preferences</h2>
+
+              <section
+                className="space-y-4 border-t border-neutral-800 pt-5"
+                aria-labelledby="preferences-heading"
+              >
+                <h2 id="preferences-heading" className="text-lg font-semibold text-white">
+                  Default interview preferences
+                </h2>
+
                 <label className="block space-y-2 text-sm">
-                  <span>Interviewer style</span>
-                  <select value={values.default_interview_persona} onChange={(event) => setValues({ ...values, default_interview_persona: event.target.value as UserProfile["default_interview_persona"] })} className="w-full rounded-lg border border-white/15 bg-[#14141d] px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300">
+                  <span className="text-neutral-300">Interviewer style</span>
+                  <select
+                    value={values.default_interview_persona}
+                    onChange={(e) =>
+                      setValues({
+                        ...values,
+                        default_interview_persona: e.target.value as UserProfile["default_interview_persona"],
+                      })
+                    }
+                    className={inputClass}
+                  >
                     <option value="technical_lead">Technical lead</option>
                     <option value="friendly_founder">Friendly founder</option>
                     <option value="hr_recruiter">HR recruiter</option>
                     <option value="stress_interviewer">Challenging interviewer</option>
                   </select>
                 </label>
+
                 <label className="block space-y-2 text-sm">
-                  <span>Default difficulty</span>
-                  <select value={values.default_interview_difficulty} onChange={(event) => setValues({ ...values, default_interview_difficulty: event.target.value as UserProfile["default_interview_difficulty"] })} className="w-full rounded-lg border border-white/15 bg-[#14141d] px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300">
+                  <span className="text-neutral-300">Default difficulty</span>
+                  <select
+                    value={values.default_interview_difficulty}
+                    onChange={(e) =>
+                      setValues({
+                        ...values,
+                        default_interview_difficulty: e.target
+                          .value as UserProfile["default_interview_difficulty"],
+                      })
+                    }
+                    className={inputClass}
+                  >
                     <option value="easy">Easy</option>
                     <option value="medium">Medium</option>
                     <option value="hard">Hard</option>
                   </select>
                 </label>
               </section>
-              {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-              {saved && <p role="status" className="text-sm text-emerald-300">Settings saved.</p>}
-              <div className="flex justify-end border-t border-white/10 pt-5">
-                <button disabled={saving} className="rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold hover:bg-violet-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300 disabled:opacity-60">{saving ? "Saving…" : "Save settings"}</button>
+
+              {error && (
+                <p role="alert" className="text-sm text-rose-300">
+                  {error}
+                </p>
+              )}
+              {saved && (
+                <p role="status" className="text-sm text-emerald-400">
+                  Settings saved.
+                </p>
+              )}
+
+              <div className="flex justify-end border-t border-neutral-800 pt-5">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-[#e8321e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#ff3b2d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8321e] disabled:opacity-60"
+                >
+                  {saving ? "Saving…" : "Save settings"}
+                </button>
               </div>
             </form>
           )}

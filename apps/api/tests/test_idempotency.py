@@ -11,7 +11,7 @@ from app.models import Transcript
 @pytest.mark.asyncio
 async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://localhost"
     ) as client:

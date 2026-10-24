@@ -24,7 +24,9 @@ from app.interview.evaluation_engine import (
     load_rubric,
     measured_evidence,
 )
-from app.interview.llm_provider import LLMProvider, LLMUnavailable, OpenAIProvider
+from app.interview.llm_provider import LLMProvider, LLMUnavailable
+from app.providers import ProviderError, get_llm_provider
+from app.providers.legacy_adapter import LegacyProviderAdapter
 from app.interview.token_budget import (
     TokenBudgetExceeded,
     reconcile_tokens,
@@ -46,7 +48,17 @@ GUIDANCE_NOTE = "AI scores are guidance for practice, not proof of competence."
 
 
 def _evaluation_provider() -> LLMProvider:
-    return OpenAIProvider(settings.OPENAI_API_KEY)
+    provider = get_llm_provider()
+    if provider.simulated:
+        raise ProviderError("The evaluation provider is disabled for real reports.")
+    return LegacyProviderAdapter(provider, purpose="report")
+
+
+def _provider_http_exception(error: ProviderError) -> HTTPException:
+    return HTTPException(
+        status_code=429 if error.status == 429 else 503,
+        detail={"user_message": error.user_message},
+    )
 
 
 async def _owned_session(
@@ -61,13 +73,20 @@ async def _owned_session(
 
 
 def _report_payload(report: EvaluationReport) -> dict[str, Any]:
+    assessments = report.ai_assessments or {}
     return {
         "id": report.id,
         "session_id": report.session_id,
         "status": report.status,
         "rubric_version": report.rubric_version,
         "measured_metrics": report.measured_metrics,
-        "ai_assessments": report.ai_assessments,
+        "ai_assessments": (
+            {key: value for key, value in assessments.items() if not key.startswith("_")}
+            if report.ai_assessments is not None
+            else None
+        ),
+        "provider": assessments.get("_provider"),
+        "model": assessments.get("_model"),
         "error": report.error,
         "guidance_note": GUIDANCE_NOTE,
         "created_at": report.created_at.isoformat() if report.created_at else None,
@@ -189,18 +208,13 @@ async def generate_evaluation_report(
         await db.commit()
         return _report_payload(report)
 
-    if not settings.openai_enabled:
-        report.status = "failed"
-        report.error = "Evaluation is unavailable because the OpenAI provider is not configured."
-        await db.commit()
-        return _report_payload(report)
-
     transcript_chars = sum(len(row.message) for row in transcripts)
     estimated_tokens = math.ceil(
         (transcript_chars + 18_000) / 4
     ) + 2 * MAX_EVALUATION_OUTPUT_TOKENS
     try:
         context = await _evaluation_context(db, session)
+        provider = _evaluation_provider()
         await reserve_tokens(
             db,
             user_id=user["id"],
@@ -212,7 +226,7 @@ async def generate_evaluation_report(
             session=session,
             transcripts=transcripts,
             context=context,
-            provider=_evaluation_provider(),
+            provider=provider,
             weights_override=settings.EVALUATION_RUBRIC_WEIGHTS or None,
         )
         if generated["tokens_used"]:
@@ -234,7 +248,15 @@ async def generate_evaluation_report(
         report.status = generated["status"]
         report.rubric_version = generated["rubric_version"]
         report.measured_metrics = generated["measured_metrics"]
-        report.ai_assessments = generated["ai_assessments"]
+        report.ai_assessments = (
+            {
+                **generated["ai_assessments"],
+                "_provider": generated["provider"],
+                "_model": generated["model"],
+            }
+            if generated["ai_assessments"] is not None
+            else None
+        )
         report.error = generated["error"]
         if generated["ai_assessments"] is not None:
             report.overall_score = generated["ai_assessments"]["overall_score"]
@@ -267,6 +289,11 @@ async def generate_evaluation_report(
         report.error = str(exc)
         await db.commit()
         return _report_payload(report)
+    except ProviderError as exc:
+        report.status = "failed"
+        report.error = exc.user_message
+        await db.commit()
+        raise _provider_http_exception(exc) from exc
     except LLMUnavailable:
         # The provider may have billed a request without returning usage metadata;
         # keep the full reservation rather than undercounting cost.
