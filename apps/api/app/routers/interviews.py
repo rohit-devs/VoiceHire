@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db, async_session
-from app.auth import get_current_user, _verify_clerk_token, _DEMO_USER
+from app.auth import get_current_user, _is_valid_uuid_v4
 from app.websocket_manager import connection_manager
 from app.interview import InterviewOrchestrator, SessionState
 from app.interview.interview_blueprint import BlueprintBuilder
@@ -265,7 +265,7 @@ async def create_interview_session(
     """
     Create a new interview session.
 
-    Requires a valid Clerk JWT (or demo user in local dev).
+    Requires a valid guest identity (cookie or X-Guest-Id header).
 
     - `role`: Target job role (e.g., "Senior Backend Engineer")
     - `difficulty`: Interview difficulty (easy/medium/hard)
@@ -868,14 +868,12 @@ async def websocket_endpoint(
             await websocket.close(code=1008)
             return
         if token:
-            try:
-                user_info = await _verify_clerk_token(token)
-            except HTTPException:
+            if not _is_valid_uuid_v4(token):
                 await websocket.close(code=1008)
                 return
-            user_id = user_info["id"]
+            user_id = token
         elif settings.DEMO_MODE and session.is_demo:
-            user_id = _DEMO_USER["id"]
+            user_id = session.user_id
         else:
             await websocket.close(code=1008)
             return

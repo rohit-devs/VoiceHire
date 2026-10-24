@@ -15,17 +15,16 @@ router = APIRouter()
 
 
 class UserCreate(BaseModel):
-    """User creation request"""
+    """User creation request (guest profile update)"""
     email: EmailStr
     first_name: str | None = None
     last_name: str | None = None
-    clerk_id: str = Field(min_length=1, max_length=255)
 
 
 class UserResponse(BaseModel):
     """User response model"""
     id: str
-    email: str
+    email: str | None
     first_name: str | None
     last_name: str | None
     target_role: str | None = None
@@ -43,9 +42,7 @@ async def register_user(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Compatibility alias that updates only the currently authenticated user."""
-    if user.clerk_id != current_user["clerk_id"]:
-        raise HTTPException(status_code=403, detail="Clerk identity does not match authenticated user")
+    """Compatibility alias that updates only the currently authenticated guest user."""
     row = await db.scalar(select(User).where(User.id == current_user["id"]))
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -70,7 +67,7 @@ async def get_current_user_profile(
 ):
     """
     Get current authenticated user profile.
-    Requires valid Clerk JWT.
+    Requires a valid guest identity.
     """
     row = await db.scalar(select(User).where(User.id == user["id"]))
     if row is None:

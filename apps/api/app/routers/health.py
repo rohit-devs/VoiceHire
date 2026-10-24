@@ -28,7 +28,6 @@ async def health_check():
         raise HTTPException(status_code=503, detail="Service unavailable") from exc
 
     agora_any = bool(settings.AGORA_APP_ID or settings.AGORA_APP_CERTIFICATE)
-    clerk_any = bool(settings.CLERK_SECRET_KEY or settings.CLERK_JWT_JWKS_URL)
     groq_any = bool(settings.GROQ_API_KEY)
     deepgram_any = bool(settings.DEEPGRAM_API_KEY)
     return {
@@ -41,7 +40,6 @@ async def health_check():
             "groq": _dependency_status(settings.groq_enabled, groq_any),
             "deepgram": _dependency_status(settings.deepgram_enabled, deepgram_any),
             "agora": _dependency_status(settings.agora_enabled, agora_any),
-            "clerk": _dependency_status(settings.clerk_enabled, clerk_any),
         },
         "demo_mode": settings.DEMO_MODE,
     }
