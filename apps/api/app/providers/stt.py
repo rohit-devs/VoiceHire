@@ -19,6 +19,7 @@ from typing import Optional
 import httpx
 
 from .llm import ProviderError, env_flag
+from app.config import settings
 
 DEEPGRAM_URL = "https://api.deepgram.com/v1/listen"
 DEFAULT_MODEL = "nova-3"
@@ -91,13 +92,22 @@ class BrowserSTT:
 
 
 def get_stt_provider() -> "DeepgramProvider | DemoSTT | BrowserSTT":
-    choice = os.getenv("STT_PROVIDER", "auto").strip().lower()
-    key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+    choice = os.getenv("STT_PROVIDER", settings.STT_PROVIDER).strip().lower()
+    key = os.getenv("DEEPGRAM_API_KEY", settings.DEEPGRAM_API_KEY).strip()
 
-    if choice == "demo" or (choice == "auto" and env_flag("DEMO_MODE")):
+    # Explicit provider choice always wins over demo mode.
+    if choice == "demo":
         return DemoSTT()
-    if choice == "browser" or (choice == "auto" and not key):
+    if choice == "browser":
         return BrowserSTT()
-    if not key:
-        raise ProviderError("STT_PROVIDER=deepgram but DEEPGRAM_API_KEY is not set")
-    return DeepgramProvider(key, model=os.getenv("DEEPGRAM_MODEL") or None)
+    if choice == "deepgram":
+        if not key:
+            raise ProviderError("STT_PROVIDER=deepgram but DEEPGRAM_API_KEY is not set")
+        return DeepgramProvider(key, model=os.getenv("DEEPGRAM_MODEL", settings.DEEPGRAM_MODEL) or None)
+
+    # Auto mode: demo wins when DEMO_MODE is on; otherwise deepgram if a key exists; browser otherwise.
+    if env_flag("DEMO_MODE") or settings.DEMO_MODE:
+        return DemoSTT()
+    if key:
+        return DeepgramProvider(key, model=os.getenv("DEEPGRAM_MODEL", settings.DEEPGRAM_MODEL) or None)
+    return BrowserSTT()

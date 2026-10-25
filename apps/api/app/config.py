@@ -25,14 +25,17 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:1b"
 
-    # ── AI ──
+    # ── STT provider ──
+    STT_PROVIDER: str = "auto"
+    DEEPGRAM_API_KEY: str = ""
+    DEEPGRAM_MODEL: str = "nova-3"
+    EVALUATION_RUBRIC_WEIGHTS: str = ""
+
+    # ── AI (Groq) ──
     GROQ_API_KEY: str = ""
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     GROQ_FAST_MODEL: str = "llama-3.1-8b-instant"
     GROQ_STRONG_MODEL: str = "llama-3.3-70b-versatile"
-    DEEPGRAM_API_KEY: str = ""
-    DEEPGRAM_MODEL: str = "nova-3"
-    EVALUATION_RUBRIC_WEIGHTS: str = ""
 
     # ── Agora ──
     AGORA_APP_ID: str = ""
