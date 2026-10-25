@@ -1,5 +1,68 @@
 import { apiInterviewService } from "@/lib/services/apiInterviewService";
 
+// ── Interview turn state machine ─────────────────────────────────────────
+export type InterviewTurnState =
+  | "IDLE"
+  | "ASKING"
+  | "LISTENING"
+  | "TRANSCRIBING"
+  | "EVALUATING"
+  | "NEXT";
+
+const LEGAL_TRANSITIONS: Record<InterviewTurnState, InterviewTurnState[]> = {
+  IDLE: ["ASKING"],
+  ASKING: ["LISTENING", "NEXT"],
+  LISTENING: ["TRANSCRIBING", "IDLE"],
+  TRANSCRIBING: ["EVALUATING"],
+  EVALUATING: ["ASKING", "NEXT"],
+  NEXT: ["ASKING", "IDLE"],
+};
+
+export class InterviewTurnMachine {
+  private state: InterviewTurnState = "IDLE";
+  private requestId = 0;
+  private subscribers: Array<(state: InterviewTurnState, requestId: number) => void> = [];
+
+  get currentState(): InterviewTurnState {
+    return this.state;
+  }
+
+  get currentRequestId(): number {
+    return this.requestId;
+  }
+
+  subscribe(fn: (state: InterviewTurnState, requestId: number) => void): () => void {
+    this.subscribers.push(fn);
+    fn(this.state, this.requestId);
+    return () => {
+      const idx = this.subscribers.indexOf(fn);
+      if (idx >= 0) this.subscribers.splice(idx, 1);
+    };
+  }
+
+  private emit(): void {
+    for (const fn of this.subscribers) fn(this.state, this.requestId);
+  }
+
+  nextRequestId(): number {
+    this.requestId += 1;
+    return this.requestId;
+  }
+
+  transition(to: InterviewTurnState, requestId?: number): boolean {
+    if (requestId !== undefined && requestId !== this.requestId) return false;
+    const allowed = LEGAL_TRANSITIONS[this.state];
+    if (!allowed || !allowed.includes(to)) return false;
+    this.state = to;
+    this.emit();
+    return true;
+  }
+
+  canTransition(to: InterviewTurnState): boolean {
+    return LEGAL_TRANSITIONS[this.state]?.includes(to) ?? false;
+  }
+}
+
 export interface FinalSpeechSegment {
   messageId: string;
   text: string;
@@ -286,7 +349,7 @@ export class RecordedAudioSpeechRecognitionProvider implements STTProvider {
     this.frame = window.requestAnimationFrame(() => this.detectSpeech());
   }
 
-  private finishRecording(): void {
+  public finishRecording(): void {
     if (this.timeout !== null) window.clearTimeout(this.timeout);
     this.timeout = null;
     if (this.frame) window.cancelAnimationFrame(this.frame);
@@ -387,6 +450,8 @@ export class RecordedAudioSpeechRecognitionProvider implements STTProvider {
 export class BrowserSpeechSynthesisProvider implements TTSProvider {
   private selectedVoiceURI: string | null = null;
   private rate = 1;
+  private paused = false;
+  private muted = false;
 
   get supported(): boolean {
     return typeof window !== "undefined" && "speechSynthesis" in window;
@@ -394,6 +459,14 @@ export class BrowserSpeechSynthesisProvider implements TTSProvider {
 
   get voices(): SpeechSynthesisVoice[] {
     return this.supported ? window.speechSynthesis.getVoices() : [];
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  get isMuted(): boolean {
+    return this.muted;
   }
 
   setVoice(voiceURI: string): void {
@@ -404,22 +477,50 @@ export class BrowserSpeechSynthesisProvider implements TTSProvider {
     this.rate = Math.min(2, Math.max(0.5, rate));
   }
 
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (muted) {
+      window.speechSynthesis?.cancel();
+      this.paused = false;
+    }
+  }
+
   speak(text: string, onEnd?: () => void): void {
-    if (!this.supported) {
+    if (!this.supported || this.muted) {
       onEnd?.();
       return;
     }
     this.stop();
+    this.paused = false;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = this.rate;
     utterance.voice =
       this.voices.find((voice) => voice.voiceURI === this.selectedVoiceURI) ?? null;
-    utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onEnd?.();
+    utterance.onend = () => {
+      this.paused = false;
+      onEnd?.();
+    };
+    utterance.onerror = () => {
+      this.paused = false;
+      onEnd?.();
+    };
     window.speechSynthesis.speak(utterance);
+  }
+
+  pause(): void {
+    if (!this.supported || this.paused || this.muted) return;
+    window.speechSynthesis?.pause();
+    this.paused = true;
+  }
+
+  resume(): void {
+    if (!this.supported || !this.paused || this.muted) return;
+    window.speechSynthesis?.resume();
+    this.paused = false;
   }
 
   stop(): void {
     if (this.supported) window.speechSynthesis.cancel();
+    this.paused = false;
   }
 }

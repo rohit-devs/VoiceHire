@@ -14,8 +14,10 @@ import { Button, Card, Textarea } from "@/components/ui/primitives";
 import {
   RecordedAudioSpeechRecognitionProvider,
   BrowserSpeechSynthesisProvider,
+  InterviewTurnMachine,
   type FinalSpeechSegment,
   type STTProvider,
+  type InterviewTurnState,
 } from "@/lib/speech/speechProviders";
 
 interface RoomTranscript {
@@ -63,12 +65,14 @@ export default function LiveInterviewPage() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [actionError, setActionError] = useState("");
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState("");
+  const [turnState, setTurnState] = useState<InterviewTurnState>("IDLE");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const speechRecognitionRef = useRef<STTProvider | null>(null);
   const speechSynthesisRef = useRef<BrowserSpeechSynthesisProvider | null>(null);
   const processingAnswerRef = useRef(false);
   const spokenQuestionRef = useRef("");
+  const turnMachineRef = useRef(new InterviewTurnMachine());
 
   const sessionId = interviewId;
   const {
@@ -201,6 +205,14 @@ export default function LiveInterviewPage() {
     };
   }, [sttProviderName, sessionId]);
 
+  // Subscribe to interview turn state machine
+  useEffect(() => {
+    const unsubscribe = turnMachineRef.current.subscribe((state) => {
+      setTurnState(state);
+    });
+    return unsubscribe;
+  }, []);
+
   // Auto-scroll transcript
   useEffect(() => {
     if (autoScroll) transcriptEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
@@ -239,6 +251,7 @@ export default function LiveInterviewPage() {
             timestamp: startResponse.timestamp_ms,
           });
         }
+        turnMachineRef.current.transition("ASKING");
       }
       setIsInterviewStarted(true);
       setOrbState(useRealVoice ? "listening" : "idle");
@@ -260,6 +273,9 @@ export default function LiveInterviewPage() {
       setActionError("");
       setOrbState("user-speaking");
       try {
+        if (turnMachineRef.current.canTransition("TRANSCRIBING")) {
+          turnMachineRef.current.transition("TRANSCRIBING");
+        }
         const acknowledgment = await interviewService.submitTranscript(sessionId, message, {
           messageId: speechSegment?.messageId,
           durationMs: speechSegment?.durationMs,
@@ -274,6 +290,9 @@ export default function LiveInterviewPage() {
         });
         setAnswerText("");
         setLastSubmittedAnswer(message);
+        if (turnMachineRef.current.canTransition("EVALUATING")) {
+          turnMachineRef.current.transition("EVALUATING");
+        }
         setOrbState("thinking");
         const nextQuestion = await interviewService.generateNextQuestion(sessionId, message);
         setAiQuestion(nextQuestion.question_text);
@@ -285,7 +304,6 @@ export default function LiveInterviewPage() {
           timestamp: nextQuestion.timestamp_ms,
         });
         setLastSubmittedAnswer("");
-        setOrbState(useRealVoice ? "speaking" : "idle");
         if (nextQuestion.state === "completed") {
           setInterviewPhase("processing");
           disconnectWebSocket();
@@ -293,12 +311,18 @@ export default function LiveInterviewPage() {
           speechSynthesisRef.current?.stop();
           leaveAgora();
           router.push(`/interview/complete/${interviewId}`);
+        } else if (turnMachineRef.current.canTransition("ASKING")) {
+          turnMachineRef.current.transition("ASKING");
         }
+        setOrbState(useRealVoice ? "speaking" : "idle");
       } catch (cause) {
         setActionError(
           cause instanceof Error ? cause.message : "Failed to submit answer or generate the next question.",
         );
         setOrbState(useRealVoice ? "listening" : "idle");
+        if (turnMachineRef.current.canTransition("LISTENING")) {
+          turnMachineRef.current.transition("LISTENING");
+        }
       } finally {
         processingAnswerRef.current = false;
       }
@@ -375,6 +399,9 @@ export default function LiveInterviewPage() {
       return;
     }
     try {
+      if (turnMachineRef.current.canTransition("LISTENING")) {
+        turnMachineRef.current.transition("LISTENING");
+      }
       recognition.start(
         (segment) => {
           recognition.stop();
@@ -769,6 +796,20 @@ export default function LiveInterviewPage() {
                     >
                       Submit Answer
                     </Button>
+                    {useRealVoice && speechSupported && turnState === "LISTENING" && (
+                      <button
+                        onClick={() => {
+                          const provider = speechRecognitionRef.current;
+                          if (provider && "finishRecording" in provider) {
+                            (provider as RecordedAudioSpeechRecognitionProvider).finishRecording();
+                          }
+                        }}
+                        aria-label="Done answering"
+                        className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm text-violet-200 hover:bg-violet-500/20"
+                      >
+                        Done Answering
+                      </button>
+                    )}
                     {agoraState === "connected" && (
                       <button
                         onClick={() => void (isMuted ? unmuteAgora() : muteAgora())}
