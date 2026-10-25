@@ -23,7 +23,7 @@ docker compose up --build
 
 Open the web app at <http://localhost:3000>. The API is at <http://127.0.0.1:8000>; readiness and liveness are available at `/api/health/ready` and `/api/health/live`. Native `pnpm dev` and Compose use API port 8000; the default `NEXT_PUBLIC_API_URL` points to that address. Compose runs Alembic migrations before starting the API, and binds published ports to loopback only. The example `.env` opts into the shared local demo user; without that explicit config demo mode defaults off. Never use the shared demo user with real candidate data.
 
-For native development, installation, environment setup, migrations, and Windows-specific commands, see [SETUP_GUIDE.md](./SETUP_GUIDE.md).
+For native development, installation, environment setup, migrations, and Windows-specific commands, see [SETUP_GUIDE.md](./docs/setup/SETUP_GUIDE.md).
 
 ## Verification
 
@@ -47,14 +47,14 @@ The end-to-end browser suite starts an isolated local SQLite API and Next.js ser
 
 ## Deployment
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) and [docs/DEPLOYMENT_CHECKLIST.md](./docs/DEPLOYMENT_CHECKLIST.md) for Vercel web deployment, Railway/Render API deployment, migration, Clerk, CORS, and secret configuration. Keep server-only credentials in server secret stores; never expose OpenAI keys, Agora certificates, or Clerk secret keys through `NEXT_PUBLIC_*` variables.
+See [DEPLOYMENT.md](./docs/operations/DEPLOYMENT.md) and [docs/DEPLOYMENT_CHECKLIST.md](./docs/operations/DEPLOYMENT_CHECKLIST.md) for Vercel web deployment, Railway/Render API deployment, migration, Clerk, CORS, and secret configuration. Keep server-only credentials in server secret stores; never expose OpenAI keys, Agora certificates, or Clerk secret keys through `NEXT_PUBLIC_*` variables.
 
 ## Architecture and operations
 
-- [SETUP_GUIDE.md](./SETUP_GUIDE.md) — Windows PowerShell and Linux/macOS setup.
-- [DEPLOYMENT.md](./DEPLOYMENT.md) — deployment steps and environment configuration.
-- [docs/DEPLOYMENT_CHECKLIST.md](./docs/DEPLOYMENT_CHECKLIST.md) — release verification checklist.
-- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) — common local and provider issues.
-- [docs/database-setup.md](./docs/database-setup.md) — schema ownership and migration workflow.
-- [docs/VOICE_ARCHITECTURE.md](./docs/VOICE_ARCHITECTURE.md) — voice architecture and explicit capability limits.
+- [SETUP_GUIDE.md](./docs/setup/SETUP_GUIDE.md) — Windows PowerShell and Linux/macOS setup.
+- [DEPLOYMENT.md](./docs/operations/DEPLOYMENT.md) — deployment steps and environment configuration.
+- [docs/DEPLOYMENT_CHECKLIST.md](./docs/operations/DEPLOYMENT_CHECKLIST.md) — release verification checklist.
+- [docs/TROUBLESHOOTING.md](./docs/operations/TROUBLESHOOTING.md) — common local and provider issues.
+- [docs/database-setup.md](./docs/architecture/database-setup.md) — schema ownership and migration workflow.
+- [docs/VOICE_ARCHITECTURE.md](./docs/architecture/VOICE_ARCHITECTURE.md) — voice architecture and explicit capability limits.
 - [docs/IMPLEMENTATION_CHECKLIST.md](./docs/IMPLEMENTATION_CHECKLIST.md) — feature inventory, verified baseline, and remaining work.

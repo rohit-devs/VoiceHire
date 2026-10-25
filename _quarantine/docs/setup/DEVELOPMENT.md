@@ -18,4 +18,4 @@ Install the backend into a Python 3.11 or 3.12 virtual environment with `python 
 
 For an isolated end-to-end environment, Playwright creates a temporary SQLite database and starts web/API servers on ports 3101/8100 in explicit local demo mode. The browser journey uses only simulated interview content. Report schema, real-session evaluation using a deterministic provider, coaching persistence, and cross-user ownership are tested by backend tests.
 
-Docker Compose provides PostgreSQL with pgvector, Redis (currently unused by the API), API, and web services. See [DEPLOYMENT.md](./DEPLOYMENT.md) for platform configuration and [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) for diagnostics.
+Docker Compose provides PostgreSQL with pgvector, Redis (currently unused by the API), API, and web services. See [DEPLOYMENT.md](./../operations/DEPLOYMENT.md) for platform configuration and [docs/TROUBLESHOOTING.md](./../operations/TROUBLESHOOTING.md) for diagnostics.

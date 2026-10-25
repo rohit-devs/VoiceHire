@@ -37,8 +37,8 @@ apps/api/        FastAPI (Python 3.11+), SQLAlchemy async, Alembic migrations
   tests/         pytest suite
 packages/database/   Prisma schema
 packages/prompts/    versioned interviewer + evaluator prompts (YAML/JSON)
-docs/                IMPLEMENTATION_CHECKLIST.md, DESIGN_SYSTEM.md
-SETUP_GUIDE.md  DEPLOYMENT.md  DEVELOPMENT.md  README.md
+docs/                IMPLEMENTATION_CHECKLIST.md, docs/product/DESIGN_SYSTEM.md
+docs/setup/SETUP_GUIDE.md  docs/operations/DEPLOYMENT.md  docs/setup/DEVELOPMENT.md  README.md
 ```
 
 Do not rename `apps/api/alembic/`. Python imports resolve it incorrectly if the real
@@ -142,7 +142,7 @@ and the checklist is updated.
 
 ## 8. Design system
 
-Full spec lives in `docs/DESIGN_SYSTEM.md`. If a section is missing there (buttons, cards,
+Full spec lives in `docs/product/DESIGN_SYSTEM.md`. If a section is missing there (buttons, cards,
 inputs, spacing, focus, motion, voice-orb states), extend the doc first, commit it, then
 build to it.
 

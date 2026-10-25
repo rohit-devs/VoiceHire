@@ -229,4 +229,8 @@ Playwright starts its own API and web servers, uses a fresh temporary SQLite dat
 
 The root `.env.example` lists API, Compose, and public web build variables. `DATABASE_URL`, `API_INTERNAL_URL`, `GROQ_API_KEY`, `DEEPGRAM_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. The browser uses relative API URLs by default; only the optional `NEXT_PUBLIC_API_URL` override and Clerk publishable key may be exposed to the browser. Never put a server-only key in a `NEXT_PUBLIC_*` variable or commit a populated `.env`.
 
-Deployment settings and platform commands are in [DEPLOYMENT.md](./DEPLOYMENT.md). Schema ownership details are in [docs/database-setup.md](./docs/database-setup.md). Common failures are covered by [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
+Deployment settings and platform commands are in [DEPLOYMENT.md](./../operations/DEPLOYMENT.md). Schema ownership details are in [docs/database-setup.md](./../architecture/database-setup.md). Common failures are covered by [docs/TROUBLESHOOTING.md](./../operations/TROUBLESHOOTING.md).
+
+## Consolidation
+
+The development-command quick reference formerly in `DEVELOPMENT.md` has been consolidated into this setup guide. All `pnpm`, `pip`, `pytest`, and Docker Compose workflows above are authoritative; `DEVELOPMENT.md` is retained in `_quarantine/` as a historical pointer.
