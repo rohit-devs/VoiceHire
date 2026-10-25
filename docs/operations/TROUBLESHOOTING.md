@@ -44,3 +44,29 @@
 ## Readiness provider status
 
 The readiness response always probes the database. Optional `openai`, `agora`, and `clerk` statuses report configuration completeness (`ok`, `degraded`, or `disabled`), not live upstream availability. `redis` remains `disabled` because the API does not currently consume it.
+
+## Ollama follow-up question generation returns HTTP 500
+
+**Symptom:** Interview start returns Q1 ("Tell me about yourself.") successfully, but `POST /api/interviews/sessions/{id}/generate-question` returns HTTP 500 with `"Failed to generate question"`. Health shows `llm: ok` using `ollama`.
+
+**Root cause:** `FallbackProvider.complete()` in `apps/api/app/interview/provider_fallback.py` expected keyword-only args `(session_id, system_prompt, user_content, max_tokens)`, but `LegacyProviderAdapter.complete()` calls it positionally with `([ChatMessage...], purpose=..., max_tokens=...)`. The wrapped providers in `apps/api/providers/llm.py` (GroqProvider, OllamaProvider) also expect `([ChatMessage...], purpose=..., max_tokens=...) -> str`, not the `LLMProvider` protocol signature. The resulting `TypeError` was not caught by the coordinator's bounded-retry handler, so it propagated as HTTP 500.
+
+**Fix:** `FallbackProvider.complete()` now accepts `messages: Sequence[ChatMessage], *, purpose, max_tokens -> str`, matching both the caller (`LegacyProviderAdapter`) and the wrapped providers. Added `model_for()` delegation so `LegacyProviderAdapter` can read the model name. Added regression test `apps/api/tests/test_followup_question_generation.py`.
+
+**Smoke test results (Ollama `llama3.2:1b`, `DEMO_MODE=false`):**
+- Q1 opener: `"Tell me about yourself."` (fixed opener, not from LLM)
+- Q2-Q4 (strong/vague/off-topic answers): valid follow-up questions, `source=real`, `degraded=false`, latency 5-11s
+- Q5 (1-word answer): Ollama echoed the raw prompt JSON as question text — 1B model quality issue, handled gracefully, not a crash
+- Q6 (long answer): question budget reached, closing question returned
+- All follow-ups: `source=real`, `degraded=false` — no bank fallback needed
+
+## Evaluation report fails schema validation with Ollama
+
+**Symptom:** `POST /api/evaluations/sessions/{id}/report/generate` returns `status=failed`, `error="Provider output did not match the evaluation schema"`, `ai_assessments=null`.
+
+**Cause:** The `llama3.2:1b` model cannot produce output matching the evaluation JSON schema. Report generation takes ~44s. This is a model-quality limitation, not a code bug.
+
+**Report regeneration blocked:** `apps/api/app/routers/evaluations.py:404-408` returns the existing report early if one exists, regardless of status. A `failed` report blocks regeneration — the endpoint returns the failed report instead of retrying. To regenerate, the existing `EvaluationReport` row must be deleted first.
+
+**Voice/STT:** UNVERIFIED — Deepgram and Groq are `disabled` (no API keys). Browser Web Speech API STT is the fallback but was not tested.
+
