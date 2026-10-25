@@ -227,8 +227,12 @@ class PromptChainCoordinator:
             payload = GeneratedQuestionPayload.model_validate(data)
             question = payload.question_text.strip()
             reasoning = payload.reasoning.strip()
-        except (json.JSONDecodeError, ValidationError):
-            # Fall back to plain text from legacy providers
+        except ValidationError:
+            # Valid JSON but wrong schema (e.g., echoed prompt). Reject to
+            # trigger regeneration instead of treating the prompt as a question.
+            return None
+        except json.JSONDecodeError:
+            # Not JSON — fall back to plain text from legacy providers.
             question = text.strip().strip('"')
             reasoning = None
 

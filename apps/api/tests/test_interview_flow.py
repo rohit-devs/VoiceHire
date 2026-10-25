@@ -130,6 +130,56 @@ async def test_fake_provider_handles_uncertain_and_short_answers(answer, expecte
 
 
 @pytest.mark.asyncio
+async def test_parse_llm_output_rejects_echoed_prompt_json():
+    """Echoed prompt JSON (valid JSON, wrong schema) must be rejected, not used as a question."""
+    coordinator = PromptChainCoordinator(FakeProvider())
+    echoed_prompt = json.dumps(
+        {
+            "task": "Ask for an example of a time when you optimized the performance of a distributed system.",
+            "format": "json",
+            "schema": {
+                "question_text": "string (1-200 chars)",
+                "reasoning": "string (max 500 chars)",
+                "difficulty_level": "integer (1-3)",
+            },
+            "blueprint": "None",
+            "conversation": [
+                {"speaker": "candidate", "text": "Yes."}
+            ],
+        }
+    )
+    result = coordinator._parse_llm_output(echoed_prompt, {"tell me about yourself"})
+    assert result is None, f"Echoed prompt JSON should be rejected, got: {result}"
+
+
+@pytest.mark.asyncio
+async def test_parse_llm_output_accepts_valid_question_json():
+    coordinator = PromptChainCoordinator(FakeProvider())
+    valid_json = json.dumps(
+        {
+            "question_text": "Can you describe a distributed system you designed?",
+            "reasoning": "Follow-up on distributed systems experience.",
+            "difficulty_level": 2,
+        }
+    )
+    result = coordinator._parse_llm_output(valid_json, set())
+    assert result is not None
+    question, reasoning = result
+    assert question == "Can you describe a distributed system you designed?"
+    assert reasoning == "Follow-up on distributed systems experience."
+
+
+@pytest.mark.asyncio
+async def test_parse_llm_output_accepts_plain_text_question():
+    coordinator = PromptChainCoordinator(FakeProvider())
+    result = coordinator._parse_llm_output("What is your experience with Python?", set())
+    assert result is not None
+    question, reasoning = result
+    assert question == "What is your experience with Python?"
+    assert reasoning is None or reasoning == ""
+
+
+@pytest.mark.asyncio
 async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
