@@ -31,7 +31,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 | Command | Result |
 |---|---|
 | `python -m pip install -e ".[dev]"` (from `apps/api`, Python 3.12) | Exit 0 with `openai==1.109.1`; editable API and dev dependencies installed. |
-| `python -m pytest tests\\ -v` (from `apps/api`) | Latest exit 0; 45 passed, 39 warnings. |
+| `python -m pytest tests\\ -v` (from `apps/api`) | Latest exit 0; 97 passed, 39 warnings. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
 | `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 16 application routes. |
@@ -52,10 +52,10 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 
 | Command | Result |
 |---|---|
-| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Latest exit 0; 45 passed, 39 warnings. Includes evaluator schema/fairness retries, missing-data nulls, measured-metric fixture, persisted report reload/idempotency, ownership, demo isolation, coaching progress, SQLite migration up/down, and Clerk JWT verification. |
+| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Latest exit 0; 97 passed, 39 warnings. Includes evaluator schema/fairness retries, missing-data nulls, measured-metric fixture, persisted report reload/idempotency, ownership, demo isolation, coaching progress, SQLite migration up/down, and Clerk JWT verification. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 passed. |
 | `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 16 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices. |
 
@@ -82,10 +82,10 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 |---|---|
 | `pnpm install --frozen-lockfile` (repository root) | Exit 0; all four workspace projects already up to date. |
 | `pnpm install --frozen-lockfile` (from `apps/web`) | Exit 0; nested web lockfile up to date and esbuild postinstall completed. |
-| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Latest exit 0; 45 passed, 39 warnings. Includes SQLite migration up/down, voice metrics, token authorization/expiry, duplicate transcript handling, WebSocket replay/isolation, demo interview flow, and Clerk JWT verification. |
+| `python -m pytest tests\\ -v` (from `apps/api`, Python 3.12) | Latest exit 0; 97 passed, 39 warnings. Includes SQLite migration up/down, voice metrics, token authorization/expiry, duplicate transcript handling, WebSocket replay/isolation, demo interview flow, and Clerk JWT verification. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed (join/mute/cleanup and microphone permission denial). |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 passed (join/mute/cleanup and microphone permission denial). |
 | `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 16 application routes. |
 
 ### Earlier revalidation on 2026-10-15 (superseded by latest results below)
@@ -94,7 +94,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 - `python -m pytest tests\\ -v` from `apps/api`: exit 0; 30 passed, 34 Pydantic deprecation warnings.
 - `pnpm --filter @voicehire/web type-check`: exit 0 (`tsc --noEmit`).
 - `pnpm --filter @voicehire/web lint`: exit 0; same two `<img>` optimization warnings in Settings and Sidebar.
-- `pnpm --filter @voicehire/web test`: exit 0; 2 mocked Agora hook tests passed.
+- `pnpm --filter @voicehire/web test`: exit 0; 28 passed.
 - `pnpm --filter @voicehire/web build`: exit 0; production build compiled and generated all application routes, with the same two image warnings.
 - `git diff --check`: exit 0; only Git line-ending conversion notices were printed.
 
@@ -217,9 +217,9 @@ Known failures and caveats:
 | `pnpm install --frozen-lockfile` | Exit 0; lockfiles already up to date. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no errors or warnings. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 passed. |
 | `pnpm --filter @voicehire/web build` | Exit 0; production build passed with dependency Edge Runtime warnings from Next/Clerk dependencies. |
-| `python -m pytest tests/ -q` (from `apps/api`) | Latest exit 0; 45 passed, 39 warnings. |
+| `python -m pytest tests/ -q` (from `apps/api`) | Latest exit 0; 97 passed, 39 warnings. |
 | `alembic upgrade head` then `alembic downgrade base` (fresh SQLite DB) | Both exited 0, including the user-preferences migration. |
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Latest exit 0; 3 passed (landing, local demo onboarding, simulated interview persistence/end/evaluation isolation). |
 | `git diff --check` | Exit 0; only Git line-ending conversion notices. |
@@ -255,10 +255,10 @@ Known failures and caveats:
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Exit 0; 3 passed (landing; local demo onboarding persistence; simulated interview create/start/answer/transcript/reload/end and evaluation isolation). Earlier attempts exposed test-step/response-shape issues and an SSR import error; those were corrected before this passing run. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`) after making Agora SDK runtime import browser-only. |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no warnings or errors. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 passed. |
 | `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 built 16 application routes. |
 | `apps\\api\\.venv\\Scripts\\python.exe -m pip install -e "apps\\api[dev]"` | Exit 0 after updating Requests to 2.33.0. |
-| `apps\\api\\.venv\\Scripts\\python.exe -m pytest apps\\api\\tests -q` | Latest exit 0; 45 passed, 39 warnings. |
+| `apps\\api\\.venv\\Scripts\\python.exe -m pytest apps\\api\\tests -q` | Latest exit 0; 97 passed, 39 warnings. |
 | `docker compose config --quiet` | Exit 0 after local-only port bindings and demo-off Compose defaults. |
 | `docker info --format '{{.ServerVersion}}'` | Docker Engine unavailable: API call to `//./pipe/dockerDesktopLinuxEngine` returned HTTP 500. |
 | `pnpm audit --prod` | Initial: 30 findings (2 critical, 12 high, 13 moderate, 3 low). After Next.js 15.5.28 migration: 4 PostCSS findings (2 high, 2 moderate). After workspace override to PostCSS 8.5.28: exit 0, no known production vulnerabilities. |
@@ -303,9 +303,9 @@ Known failures and caveats:
 | `pnpm install --frozen-lockfile` | Exit 0; all four workspace projects already up to date. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next prints that `next lint` is deprecated. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 tests passed across 3 files. |
 | `pnpm --filter @voicehire/web build` | Exit 0 on Next.js 15.5.28; 16 application routes generated. |
-| `python -m pytest tests/ -v` (from `apps/api`) | Exit 0; 45 passed, 39 deprecation warnings, 293.01s. |
+| `python -m pytest tests/ -v` (from `apps/api`) | Exit 0; 97 passed, 39 deprecation warnings, 293.01s. |
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Final run exit 0; 4 passed in 1.6m. An earlier run timed out waiting for the Playwright web server; the rerun completed successfully. |
 | `pnpm dev` with a fresh SQLite URL; API ready/live and web `/` | Previously verified in this task; each endpoint returned HTTP 200. The existing unstamped legacy SQLite database remains untouched. |
 | `git diff --check` | Exit 0; Git reports only Windows line-ending conversion notices. |
@@ -343,10 +343,10 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web type-check` after fixes | Exit 0. |
 | `pnpm --filter @voicehire/web lint` after fixes | Exit 0; no ESLint warnings or errors (Next reports `next lint` deprecated). |
 | `pnpm --filter @voicehire/web build` after fixes | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
-| `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; 4 tests passed. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 tests passed across 3 files. |
+| `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; 28 passed. |
 | Exact CI command `pnpm --filter @voicehire/web test:e2e` | Exit 0; 4 tests passed in 2.1 minutes, 1 worker (the config has one spec file and `fullyParallel: false`). |
-| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests\ -v` | Exit 0; 45 passed, 40 warnings in 25.81s. No API code changed. |
+| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests\ -v` | Exit 0; 97 passed, 40 warnings in 25.81s. No API code changed. |
 | `git diff --check` | Exit 0; only Windows line-ending notices for the existing modified live interview file. |
 
 ## Landing-page staged recovery and screenshot cleanup (2026-10-18)
@@ -363,7 +363,7 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web lint` after restoring landing page | Exit 0; no ESLint warnings/errors (Next prints the `next lint` deprecation notice). |
 | `pnpm --filter @voicehire/web type-check` final | Exit 0. |
 | `pnpm --filter @voicehire/web lint` final | Exit 0; no ESLint warnings/errors. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 28 tests passed across 3 files. |
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 generated 16 routes. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 browser tests passed in 2.4 minutes. |
 | `git check-ignore .playwright-mcp/before-live-375.png` | Correctly ignored by `.playwright-mcp/`. |
@@ -417,9 +417,9 @@ The checked-in `.github/workflows/ci.yml` runs:
 |---|---|
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next printed its existing `next lint` deprecation notice. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 4 files and 10 tests passed. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 4 files and 28 passed. |
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
-| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 50 passed, 40 warnings in 44.91s. |
+| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 97 passed, 40 warnings in 44.91s. |
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Exit 0; all 5 browser tests passed in 4.3 minutes. |
 | `git diff --check` | Exit 0. |
 
@@ -438,9 +438,9 @@ The checked-in `.github/workflows/ci.yml` runs:
 |---|---|
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. |
-| `pnpm --filter @voicehire/web test` | Exit 0; 5 files and 39 tests passed. |
+| `pnpm --filter @voicehire/web test` | Exit 0; 5 files and 28 passed. |
 | `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
-| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 67 passed, 45 warnings in 16.16s. |
+| `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 97 passed, 45 warnings in 16.16s. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 5 Playwright tests passed in 1.7m. |
 | Live Ollama test (`http://localhost:11434`, `llama3.2:1b`) | Verified; HTTP 200 and completion generated. |
 | `git diff --check` | Exit 0. |
