@@ -105,3 +105,7 @@ prisma/migrations/
 apps/web/test-results/
 .playwright-mcp/
 apps/web/.next-playwright/
+
+.kilo/
+
+.env.local.backup*
