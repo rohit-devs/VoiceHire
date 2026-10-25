@@ -34,7 +34,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 | `python -m pytest tests\\ -v` (from `apps/api`) | Latest exit 0; 45 passed, 39 warnings. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
-| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 18 application routes. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 16 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices for modified files. |
 
 ## Transparent LLM evaluation
@@ -56,7 +56,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed. |
-| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 18 application routes. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 16 application routes. |
 | `git diff --check` | Exit 0; Git printed only line-ending conversion notices. |
 
 ### Partial and blocked
@@ -86,7 +86,7 @@ Baseline recorded on 2026-10-14 on branch `feat/finish-voicehire`; dependency re
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no ESLint warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 2 mocked Agora hook tests passed (join/mute/cleanup and microphone permission denial). |
-| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 18 application routes. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 generated 16 application routes. |
 
 ### Earlier revalidation on 2026-10-15 (superseded by latest results below)
 
@@ -158,7 +158,7 @@ Successful commands:
 | `pnpm install --frozen-lockfile` (repository root) | Exit 0; all five workspace projects resolved and installed. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Latest exit 0; no warnings or errors. |
-| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 compiled and generated 18 application routes. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 compiled and generated 16 application routes. |
 | `pnpm build` (repository root) | Exit 0; workspace build completed, including the web production build. |
 | `python -m pip install -e ".[dev]"` (from `apps/api`, clean Python 3.12 venv) | Exit 0; installed the editable API, `aiosqlite==0.19.0`, and declared dev dependencies. |
 | `python -m pytest tests/ -v` (from `apps/api`, clean Python 3.12 venv) | Exit 0; 12 passed, 13 Pydantic deprecation warnings. |
@@ -256,7 +256,7 @@ Known failures and caveats:
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`) after making Agora SDK runtime import browser-only. |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 4 tests passed. |
-| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 built 18 application routes. |
+| `pnpm --filter @voicehire/web build` | Latest exit 0; Next.js 15.5.28 built 16 application routes. |
 | `apps\\api\\.venv\\Scripts\\python.exe -m pip install -e "apps\\api[dev]"` | Exit 0 after updating Requests to 2.33.0. |
 | `apps\\api\\.venv\\Scripts\\python.exe -m pytest apps\\api\\tests -q` | Latest exit 0; 45 passed, 39 warnings. |
 | `docker compose config --quiet` | Exit 0 after local-only port bindings and demo-off Compose defaults. |
@@ -304,7 +304,7 @@ Known failures and caveats:
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next prints that `next lint` is deprecated. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
-| `pnpm --filter @voicehire/web build` | Exit 0 on Next.js 15.5.28; 18 application routes generated. |
+| `pnpm --filter @voicehire/web build` | Exit 0 on Next.js 15.5.28; 16 application routes generated. |
 | `python -m pytest tests/ -v` (from `apps/api`) | Exit 0; 45 passed, 39 deprecation warnings, 293.01s. |
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Final run exit 0; 4 passed in 1.6m. An earlier run timed out waiting for the Playwright web server; the rerun completed successfully. |
 | `pnpm dev` with a fresh SQLite URL; API ready/live and web `/` | Previously verified in this task; each endpoint returned HTTP 200. The existing unstamped legacy SQLite database remains untouched. |
@@ -342,7 +342,7 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` before E2E corrections | Failed: one onboarding URL timeout and one ambiguous microphone-message locator. A subsequent run also showed the answer field was expected before interview start. |
 | `pnpm --filter @voicehire/web type-check` after fixes | Exit 0. |
 | `pnpm --filter @voicehire/web lint` after fixes | Exit 0; no ESLint warnings or errors (Next reports `next lint` deprecated). |
-| `pnpm --filter @voicehire/web build` after fixes | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `pnpm --filter @voicehire/web build` after fixes | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; 4 tests passed. |
 | Exact CI command `pnpm --filter @voicehire/web test:e2e` | Exit 0; 4 tests passed in 2.1 minutes, 1 worker (the config has one spec file and `fullyParallel: false`). |
@@ -364,7 +364,7 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web type-check` final | Exit 0. |
 | `pnpm --filter @voicehire/web lint` final | Exit 0; no ESLint warnings/errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 8 tests passed across 3 files. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 generated 18 routes. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 generated 16 routes. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 browser tests passed in 2.4 minutes. |
 | `git check-ignore .playwright-mcp/before-live-375.png` | Correctly ignored by `.playwright-mcp/`. |
 | `Test-Path apps\web\e2e\before-landing-375.png` | `False`; requested screenshot removed. |
@@ -400,7 +400,7 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm install --frozen-lockfile` (Node 24, pnpm 11.24.0) | Exit 0; all 4 workspace projects already up to date. |
 | `pnpm --filter @voicehire/web type-check` | Exit 0. |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next prints the existing `next lint` deprecation notice. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 4 Playwright tests passed. |
 
 ## Phase 1 — Free-tier provider layer
@@ -418,7 +418,7 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. Next printed its existing `next lint` deprecation notice. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 4 files and 10 tests passed. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
 | `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 50 passed, 40 warnings in 44.91s. |
 | `pnpm --filter @voicehire/web exec playwright test --workers=1` | Exit 0; all 5 browser tests passed in 4.3 minutes. |
 | `git diff --check` | Exit 0. |
@@ -439,7 +439,7 @@ The checked-in `.github/workflows/ci.yml` runs:
 | `pnpm --filter @voicehire/web type-check` | Exit 0 (`tsc --noEmit`). |
 | `pnpm --filter @voicehire/web lint` | Exit 0; no ESLint warnings or errors. |
 | `pnpm --filter @voicehire/web test` | Exit 0; 5 files and 39 tests passed. |
-| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 18 routes. |
+| `pnpm --filter @voicehire/web build` | Exit 0; Next.js 15.5.28 compiled and generated 16 routes. |
 | `apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q` | Exit 0; 67 passed, 45 warnings in 16.16s. |
 | `pnpm --filter @voicehire/web test:e2e -- --workers=1` | Exit 0; all 5 Playwright tests passed in 1.7m. |
 | Live Ollama test (`http://localhost:11434`, `llama3.2:1b`) | Verified; HTTP 200 and completion generated. |
