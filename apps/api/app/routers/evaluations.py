@@ -4,7 +4,7 @@ import json
 import logging
 import math
 from copy import deepcopy
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -94,29 +94,103 @@ def _report_payload(report: EvaluationReport) -> dict[str, Any]:
 
 
 def _make_coaching_plan(
-    report: EvaluationReport, user_id: str, role: str, assessments: dict[str, Any]
+    report: EvaluationReport, user_id: str, role: str, assessments: dict[str, Any], plan_length: int = 7
 ) -> CoachingPlan:
     exercises = assessments["practice_exercises"]
-    days = [
-        {
-            "day": index,
-            "title": exercise["title"],
-            "description": exercise["task"],
-            "category": exercise["category"],
-            "target_role": role,
-            "duration": "20 minutes",
-            "completed": False,
-        }
-        for index, exercise in enumerate(exercises, start=1)
-    ]
+    weakest_categories = sorted(
+        assessments["category_scores"].items(),
+        key=lambda item: item[1]["score"],
+    )
+    weakest_names = [name for name, _ in weakest_categories[:3]]
+
+    base_days = []
+    for index, exercise in enumerate(exercises, start=1):
+        day_num = index
+        difficulty = _difficulty_for_day(day_num, plan_length)
+        base_days.append(
+            {
+                "day": day_num,
+                "title": exercise["title"],
+                "description": exercise["task"],
+                "category": exercise["category"],
+                "target_role": role,
+                "difficulty": difficulty,
+                "duration": "20 minutes",
+                "completed": False,
+                "type": "practice",
+            }
+        )
+
+    # Spaced review days (only for 12-day plan): revisit earlier weaknesses
+    # with new tasks, spaced 3+ days after the original practice.
+    review_days = []
+    if plan_length == 12:
+        review_categories = weakest_names or [exercises[0]["category"]] if exercises else []
+        for review_index in range(5):
+            day_num = 8 + review_index
+            category = review_categories[review_index % len(review_categories)]
+            review_days.append(
+                {
+                    "day": day_num,
+                    "title": f"Spaced review: {category}",
+                    "description": f"Revisit {category} with a fresh exercise based on your earlier weaknesses. Try a different approach than your first attempt.",
+                    "category": category,
+                    "target_role": role,
+                    "difficulty": "review",
+                    "duration": "15 minutes",
+                    "completed": False,
+                    "type": "review",
+                }
+            )
+
+    all_days = base_days + review_days
+
+    start = date.today()
+    for day_entry in all_days:
+        day_entry["date"] = (start + timedelta(days=day_entry["day"] - 1)).isoformat()
+
+    plan_data = {
+        "days": all_days,
+        "total_days": len(all_days),
+        "target_role": role,
+        "plan_length": plan_length,
+        "plan_selection_rule": (
+            "7-day plan for mild weakness (<=3 weak rubric categories); "
+            "12-day plan for significant weakness (>=4 weak categories) or "
+            "when the user requests an extended plan. Difficulty ramps easy→medium→hard→review. "
+            "Days 8-12 (12-day only) are spaced review of earlier weaknesses."
+        ),
+        "weakest_categories": weakest_names,
+    }
+
+    end = start + timedelta(days=len(all_days) - 1)
     return CoachingPlan(
         user_id=user_id,
         evaluation_report_id=report.id,
-        plan_data={"days": days, "total_days": len(days), "target_role": role},
-        start_date=date.today(),
+        plan_data=plan_data,
+        start_date=start,
+        end_date=end,
         completed_days=0,
         progress_notes={},
     )
+
+
+def _difficulty_for_day(day_num: int, plan_length: int) -> str:
+    """Difficulty ramp: easy → medium → hard → review across the plan."""
+    if plan_length == 7:
+        if day_num <= 2:
+            return "easy"
+        if day_num <= 5:
+            return "medium"
+        return "hard"
+    # 12-day plan
+    if day_num <= 3:
+        return "easy"
+    if day_num <= 6:
+        return "medium"
+    if day_num <= 9:
+        return "hard"
+    return "review"
 
 
 async def _evaluation_context(
@@ -157,6 +231,7 @@ async def get_evaluation_report(
 @router.post("/sessions/{session_id}/report/generate")
 async def generate_evaluation_report(
     session_id: str,
+    plan_length: int = Query(default=7, ge=7, le=12),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
@@ -273,6 +348,7 @@ async def generate_evaluation_report(
                     user["id"],
                     session.role,
                     generated["ai_assessments"],
+                    plan_length=plan_length,
                 )
             )
         await db.commit()
@@ -405,7 +481,7 @@ async def get_coaching_plan(
 @router.post("/sessions/{session_id}/coaching-plan/update")
 async def update_coaching_progress(
     session_id: str,
-    day: int = Query(ge=1, le=7),
+    day: int = Query(ge=1, le=12),
     notes: str | None = Query(default=None, max_length=1000),
     progress: CoachingProgressUpdate | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
