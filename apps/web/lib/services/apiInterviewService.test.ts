@@ -90,4 +90,110 @@ describe("apiInterviewService request handling", () => {
       "test-guest-uuid-v4-1234-4abc-8def-123456789abc",
     );
   });
+
+  it("retries idempotent GET on 503 and succeeds on retry", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        json: async () => ({ detail: "down" }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        json: async () => ({ detail: "down" }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, statusText: "OK", json: async () => [{ id: "s1", duration_seconds: 0 }] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiInterviewService.getHistory()).resolves.toEqual([
+      {
+        id: "s1",
+        role: undefined,
+        difficulty: undefined,
+        experienceLevel: "",
+        interviewType: undefined,
+        persona: undefined,
+        pressureMode: false,
+        duration: 0,
+        company: undefined,
+        agoraChannel: undefined,
+        isDemo: undefined,
+        createdAt: undefined,
+        status: undefined,
+        currentState: undefined,
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry GET on 404", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({ detail: "not found" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiInterviewService.getInterview("missing")).rejects.toThrow("not found");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry non-idempotent POST on 503", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      json: async () => ({ detail: "overloaded" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiInterviewService.generateNextQuestion("session-1", "answer"))
+      .rejects.toThrow("overloaded");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries idempotent GET on network error", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce({ ok: true, status: 200, statusText: "OK", json: async () => [{ id: "s1", duration_seconds: 0 }] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiInterviewService.getHistory()).resolves.toEqual([
+      {
+        id: "s1",
+        role: undefined,
+        difficulty: undefined,
+        experienceLevel: "",
+        interviewType: undefined,
+        persona: undefined,
+        pressureMode: false,
+        duration: 0,
+        company: undefined,
+        agoraChannel: undefined,
+        isDemo: undefined,
+        createdAt: undefined,
+        status: undefined,
+        currentState: undefined,
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws after exhausting retries on persistent 503", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      json: async () => ({ detail: "persistently down" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiInterviewService.getHistory()).rejects.toThrow("persistently down");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

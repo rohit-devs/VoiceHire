@@ -32,28 +32,81 @@ export function getGuestId(): string {
   return getOrCreateGuestId();
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_RETRIES = 2;
+const RETRY_BACKOFF_MS = 250;
+
+function isIdempotent(method: string | undefined): boolean {
+  return method === "GET" || method === "HEAD" || method === undefined;
+}
+
+function isRetryable(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 class ApiInterviewService implements InterviewService {
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const method = options.method ?? "GET";
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     const guestId = getGuestId();
     headers[GUEST_ID_HEADER] = guestId;
 
-    const res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...(options.headers as Record<string, string>),
-      },
-    });
+    const fetchWithTimeout = async (): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        return await fetch(`${API_URL}${path}`, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            ...headers,
+            ...(options.headers as Record<string, string>),
+          },
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
-    if (!res.ok) {
-      const error: { detail?: unknown } | null = await res.json().catch(() => null);
-      throw new Error(apiErrorMessage(error, res.statusText || `API error: ${res.status}`));
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let res: Response | null = null;
+      let networkError: Error | null = null;
+      try {
+        res = await fetchWithTimeout();
+      } catch (cause) {
+        networkError = cause instanceof Error ? cause : new Error("Request failed.");
+      }
+
+      if (networkError) {
+        lastError = networkError;
+        if (!isIdempotent(method) || attempt >= MAX_RETRIES) throw networkError;
+        await sleep(RETRY_BACKOFF_MS * (attempt + 1));
+        continue;
+      }
+
+      if (!res) throw new Error("Request failed.");
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        const message = apiErrorMessage(error, res.statusText || `API error: ${res.status}`);
+        if (isRetryable(res.status) && isIdempotent(method) && attempt < MAX_RETRIES) {
+          lastError = new Error(message);
+          await sleep(RETRY_BACKOFF_MS * (attempt + 1));
+          continue;
+        }
+        throw new Error(message);
+      }
+
+      return res.json() as Promise<T>;
     }
-
-    return res.json() as Promise<T>;
+    throw lastError ?? new Error("Request failed.");
   }
 
   async getSTTProvider(): Promise<string> {
