@@ -1,4 +1,4 @@
-"""GATE 3: Real Deepgram STT verification.
+r"""GATE 3: Real Deepgram STT verification.
 
 Generates a WAV file with known text using pyttsx3, transcribes it through
 the actual Deepgram backend provider, and checks word-error rate against the
