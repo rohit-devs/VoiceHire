@@ -32,7 +32,7 @@ export function getGuestId(): string {
   return getOrCreateGuestId();
 }
 
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_RETRIES = 2;
 const RETRY_BACKOFF_MS = 250;
 
