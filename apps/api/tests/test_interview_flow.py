@@ -1,4 +1,5 @@
 import json
+from sqlalchemy import select
 from uuid import uuid4
 
 import pytest
@@ -20,7 +21,7 @@ from app.interview.token_budget import (
     reserve_tokens,
 )
 from app.main import app
-from app.models import InterviewSession, User
+from app.models import EvaluationReport, InterviewSession, User
 
 
 def test_state_transition_table_rejects_invalid_transitions():
@@ -345,3 +346,135 @@ async def test_question_budget_closes_without_exceeding_question_count(monkeypat
         )
         assert state.json()["question_count"] == 6
         assert state.json()["current_state"] == SessionState.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_failed_report_can_be_regenerated(monkeypatch):
+    """A failed evaluation report must not block regeneration of a new report."""
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "difficulty": "medium",
+                "persona": "technical",
+                "company": "Test Corp",
+                "interviewer_type": "technical",
+                "job_category": "backend",
+                "resume_text": "Software engineer with 5 years of Python backend experience.",
+                "duration_seconds": 300,
+                "is_demo": True,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers=headers
+        )
+        assert started.status_code == 200, started.text
+
+        ended = await client.post(
+            f"/api/interviews/sessions/{session_id}/end", headers=headers
+        )
+        assert ended.status_code == 200, ended.text
+
+        # Insert a failed report directly into the DB
+        failed_id = None
+        async with async_session() as db:
+            report = EvaluationReport(
+                session_id=session_id,
+                status="failed",
+                rubric_version="1.0.0",
+                measured_metrics={},
+                ai_assessments=None,
+                error="Provider output did not match the evaluation schema",
+            )
+            db.add(report)
+            await db.commit()
+            await db.refresh(report)
+            failed_id = report.id
+
+        # Regenerate — must not return the failed report
+        regenerated = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers=headers,
+        )
+        assert regenerated.status_code == 200, regenerated.text
+        body = regenerated.json()
+        assert body["id"] != failed_id, "Regenerated report must have a new ID"
+        assert body["status"] != "failed", "Regenerated report must not be failed"
+
+        # Only one report should exist for the session
+        async with async_session() as db:
+            result = await db.execute(
+                select(EvaluationReport).where(
+                    EvaluationReport.session_id == session_id
+                )
+            )
+            rows = result.scalars().all()
+            assert len(rows) == 1, f"Expected 1 report, found {len(rows)}"
+
+
+@pytest.mark.asyncio
+async def test_successful_report_blocks_regeneration(monkeypatch):
+    """A successful (non-failed) evaluation report must block regeneration."""
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    headers = {"X-Guest-Id": guest_id}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "difficulty": "medium",
+                "persona": "technical",
+                "company": "Test Corp",
+                "interviewer_type": "technical",
+                "job_category": "backend",
+                "resume_text": "Software engineer with 5 years of Python backend experience.",
+                "duration_seconds": 300,
+                "is_demo": True,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers=headers
+        )
+        assert started.status_code == 200, started.text
+
+        ended = await client.post(
+            f"/api/interviews/sessions/{session_id}/end", headers=headers
+        )
+        assert ended.status_code == 200, ended.text
+
+        # Generate a (demo) report — should succeed
+        first = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers=headers,
+        )
+        assert first.status_code == 200, first.text
+        first_id = first.json()["id"]
+
+        # Regenerate — must return the same report, not create a new one
+        second = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers=headers,
+        )
+        assert second.status_code == 200, second.text
+        assert second.json()["id"] == first_id, "Successful report must block regeneration"

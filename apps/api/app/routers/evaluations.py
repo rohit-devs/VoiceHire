@@ -405,7 +405,11 @@ async def generate_evaluation_report(
         select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
     if existing is not None:
-        return _report_payload(existing)
+        if existing.status == "failed":
+            await db.delete(existing)
+            await db.commit()
+        else:
+            return _report_payload(existing)
     if session.current_state != "completed":
         raise HTTPException(status_code=409, detail="Only completed sessions can be evaluated")
 
