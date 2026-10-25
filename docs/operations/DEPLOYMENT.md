@@ -52,8 +52,8 @@ This guide describes a deployment procedure; it is not evidence that VoiceHire h
 
 ## Environment variable inventory
 
-The maintained variable template is [`.env.example`](./.env.example). Public variables are limited to `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. `DATABASE_URL`, `OPENAI_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. `POSTGRES_PASSWORD` is a local Compose setting; use managed database credentials in deployment. See the template comments for all optional values.
+The maintained variable template is [`.env.example`](./../../.env.example). Public variables are limited to `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. `DATABASE_URL`, `OPENAI_API_KEY`, `AGORA_APP_CERTIFICATE`, `CLERK_SECRET_KEY`, and `CLERK_JWT_JWKS_URL` are server-only. `POSTGRES_PASSWORD` is a local Compose setting; use managed database credentials in deployment. See the template comments for all optional values.
 
 ## Release checklist and troubleshooting
 
-Use [docs/DEPLOYMENT_CHECKLIST.md](./docs/DEPLOYMENT_CHECKLIST.md) as the release gate and [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) for common provider, migration, and browser issues.
+Use [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) as the release gate and [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for common provider, migration, and browser issues.
