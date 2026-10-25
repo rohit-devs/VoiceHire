@@ -76,6 +76,7 @@ coverage/
 *.tsbuildinfo
 /apps/web/test-results/
 .playwright-mcp/
+apps/api/tests/*.wav
 
 # Database
 *.db
