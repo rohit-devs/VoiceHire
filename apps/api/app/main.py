@@ -15,6 +15,17 @@ from app.routers import health, agora, interviews, evaluations, users, phase4, a
 async def lifespan(app: FastAPI):
     """Startup / shutdown events."""
     print("[Startup] VoiceHire backend starting...")
+    missing_optional = []
+    if not settings.GROQ_API_KEY:
+        missing_optional.append("GROQ_API_KEY")
+    if not settings.DEEPGRAM_API_KEY:
+        missing_optional.append("DEEPGRAM_API_KEY")
+    if not settings.AGORA_APP_ID:
+        missing_optional.append("AGORA_APP_ID")
+    if missing_optional:
+        print(f"[Startup] Optional provider keys not set: {', '.join(missing_optional)} — running in demo/degraded mode.")
+    else:
+        print("[Startup] All optional provider keys are set.")
     await init_db()
     yield
     await close_db()

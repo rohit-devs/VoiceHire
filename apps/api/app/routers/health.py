@@ -40,6 +40,7 @@ async def health_check():
             "groq": _dependency_status(settings.groq_enabled, groq_any),
             "deepgram": _dependency_status(settings.deepgram_enabled, deepgram_any),
             "agora": _dependency_status(settings.agora_enabled, agora_any),
+            "tts": {"status": "browser", "reason": "Web Speech API TTS is client-side; browser capability."},
         },
         "demo_mode": settings.DEMO_MODE,
     }
