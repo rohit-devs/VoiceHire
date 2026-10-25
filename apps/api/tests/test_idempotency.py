@@ -130,4 +130,9 @@ async def test_demo_session_lifecycle_is_idempotent_and_has_no_evaluation(monkey
             f"/api/evaluations/sessions/{session_id}/report/generate",
             headers={"Idempotency-Key": "report-1", **headers},
         )
-        assert report.status_code == 409, report.text
+        assert report.status_code == 200, report.text
+        report_body = report.json()
+        assert report_body["provider"] == "demo"
+        assert report_body["model"] == "simulated"
+        assert "heuristic" in report_body["guidance_note"].lower()
+        assert report_body["status"] == "completed"

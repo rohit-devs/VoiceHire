@@ -20,11 +20,7 @@ export default function InterviewCompletePage() {
     setError("");
     try {
       const interview = await apiInterviewService.getInterview(interviewId);
-      if (interview?.isDemo) {
-        setStatus("error");
-        setError("Simulated demo — real evaluations are not generated from simulated sessions.");
-        return;
-      }
+      if (!interview) throw new Error("Interview session was not found.");
       const report = await apiInterviewService.generateEvaluation(interviewId);
       if (report.status === "completed" || report.status === "insufficient_data") {
         setStatus("success");
@@ -34,7 +30,7 @@ export default function InterviewCompletePage() {
       setError(report.error || "Evaluation could not be completed.");
     } catch (cause: unknown) {
       setStatus("error");
-      setError(cause instanceof Error ? cause.message : "Verified evaluation is unavailable.");
+      setError(cause instanceof Error ? cause.message : "Evaluation is unavailable.");
     }
   }, [interviewId]);
 

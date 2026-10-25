@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import re
 from copy import deepcopy
 from datetime import date, timedelta
 from typing import Any
@@ -23,6 +24,7 @@ from app.interview.evaluation_engine import (
     has_evaluation_pairs,
     load_rubric,
     measured_evidence,
+    _question_answer_pairs,
 )
 from app.interview.llm_provider import LLMProvider, LLMUnavailable
 from app.providers import ProviderError, get_llm_provider
@@ -42,9 +44,11 @@ from app.models import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 GUIDANCE_NOTE = "AI scores are guidance for practice, not proof of competence."
+DEMO_GUIDANCE_NOTE = "Demo scores are heuristic simulations, not AI-generated assessments."
+
+router = APIRouter()
 
 
 def _evaluation_provider() -> LLMProvider:
@@ -52,6 +56,161 @@ def _evaluation_provider() -> LLMProvider:
     if provider.simulated:
         raise ProviderError("The evaluation provider is disabled for real reports.")
     return LegacyProviderAdapter(provider, purpose="report")
+
+
+def _generate_demo_evaluation(
+    session: InterviewSession, transcripts: list[Transcript], plan_length: int = 7
+) -> dict[str, Any]:
+    """Generate a clearly-labeled deterministic demo evaluation without an LLM.
+
+    Uses simple heuristics (answer length, specific examples, measurable outcomes)
+    and is never described as AI-generated or provider-verified.
+    """
+    rubric = load_rubric()
+    metrics = measured_evidence(session, transcripts)
+    pairs = _question_answer_pairs(transcripts)
+
+    if not pairs:
+        return {
+            "status": "insufficient_data",
+            "rubric_version": rubric["version"],
+            "measured_metrics": metrics,
+            "ai_assessments": {
+                "_provider": "demo",
+                "_model": "simulated",
+                "_guidance_note": DEMO_GUIDANCE_NOTE,
+            },
+            "provider": "demo",
+            "model": "simulated",
+            "error": "No finalized question-and-answer pairs are available for evaluation.",
+            "tokens_used": 0,
+        }
+
+    categories = list(rubric["categories"].keys())
+    per_question: list[dict[str, Any]] = []
+    all_scores: dict[str, list[int]] = {name: [] for name in categories}
+
+    example_terms = re.compile(
+        r"\b(built|led|created|developed|implemented|designed|launched|owned|delivered)\b",
+        re.IGNORECASE,
+    )
+    metric_terms = re.compile(
+        r"\b\d+(?:\.\d+)?\s*(%|percent|ms|seconds?|minutes?|hours?|days?|x|times?)\b",
+        re.IGNORECASE,
+    )
+    outcome_terms = re.compile(
+        r"\b(reduced|increased|improved|decreased|saved|achieved|resulted|cut)\b",
+        re.IGNORECASE,
+    )
+
+    for pair in pairs:
+        answer = pair["answer"]
+        words = len(re.findall(r"[^\W_]+(?:['’][^\W_]+)?", answer))
+        has_example = bool(example_terms.search(answer))
+        has_metric = bool(metric_terms.search(answer))
+        has_outcome = bool(outcome_terms.search(answer))
+
+        base_score = min(5, max(1, words // 10))
+        if has_example:
+            base_score = min(5, base_score + 1)
+        if has_metric:
+            base_score = min(5, base_score + 1)
+        if has_outcome:
+            base_score = min(5, base_score + 1)
+
+        scores: dict[str, int] = {}
+        for name in categories:
+            variation = {
+                "technical_correctness": 0,
+                "relevance": 0,
+                "structure_and_clarity": 1,
+                "completeness_and_examples": -1 if not has_example else 0,
+                "problem_solving": 0,
+                "communication": 1 if has_outcome else 0,
+                "job_skill_alignment": 0,
+            }.get(name, 0)
+            score = max(0, min(5, base_score + variation))
+            scores[name] = score
+            all_scores[name].append(score)
+
+        evidence = answer[:50] if answer else "No answer provided."
+        per_question.append(
+            {
+                "question_id": pair["question_id"],
+                "question": pair["question"],
+                "evidence_quote": evidence,
+                "rationale": "Demo heuristic score based on answer length, specific examples, and measurable outcomes.",
+                "category_scores": scores,
+            }
+        )
+
+    category_scores: dict[str, dict[str, Any]] = {}
+    for name in categories:
+        avg = sum(all_scores[name]) / len(all_scores[name]) if all_scores[name] else 0
+        rounded = max(0, min(5, round(avg)))
+        category_scores[name] = {
+            "score": rounded,
+            "rationale": "Demo heuristic aggregate across all answers.",
+        }
+
+    weighted = sum(
+        category_scores[name]["score"] * rubric["weights"][name] for name in categories
+    )
+    overall_score = round(weighted, 2)
+
+    weakest = sorted(categories, key=lambda n: category_scores[n]["score"])[:3]
+
+    strengths = ["Completed all interview questions."]
+    missing_elements = ["More specific examples with measurable outcomes."]
+    improved_structure = [
+        "State the problem and constraints.",
+        "Explain the approach and trade-offs.",
+        "Conclude with a measured result.",
+    ]
+
+    practice_exercises: list[dict[str, Any]] = []
+    for i, category in enumerate(weakest):
+        practice_exercises.append(
+            {
+                "category": category,
+                "title": f"Practice task {i + 1}",
+                "task": f"Prepare a specific example for {category.replace('_', ' ')} with a measurable result.",
+                "target_role": session.role,
+            }
+        )
+    while len(practice_exercises) < 7:
+        practice_exercises.append(
+            {
+                "category": weakest[len(practice_exercises) % len(weakest)],
+                "title": f"Practice task {len(practice_exercises) + 1}",
+                "task": "Outline an answer for a relevant interview question.",
+                "target_role": session.role,
+            }
+        )
+
+    ai_assessments: dict[str, Any] = {
+        "overall_score": overall_score,
+        "category_scores": category_scores,
+        "per_question_analysis": per_question,
+        "strengths": strengths,
+        "missing_elements": missing_elements,
+        "improved_answer_structure": improved_structure,
+        "practice_exercises": practice_exercises,
+        "_provider": "demo",
+        "_model": "simulated",
+        "_guidance_note": DEMO_GUIDANCE_NOTE,
+    }
+
+    return {
+        "status": "completed",
+        "rubric_version": rubric["version"],
+        "measured_metrics": metrics,
+        "ai_assessments": ai_assessments,
+        "provider": "demo",
+        "model": "simulated",
+        "error": None,
+        "tokens_used": 0,
+    }
 
 
 def _provider_http_exception(error: ProviderError) -> HTTPException:
@@ -74,6 +233,12 @@ async def _owned_session(
 
 def _report_payload(report: EvaluationReport) -> dict[str, Any]:
     assessments = report.ai_assessments or {}
+    guidance = (
+        assessments.get("_guidance_note")
+        if isinstance(assessments, dict)
+        else None
+    ) or GUIDANCE_NOTE
+    filtered = {key: value for key, value in assessments.items() if not key.startswith("_")}
     return {
         "id": report.id,
         "session_id": report.session_id,
@@ -81,20 +246,18 @@ def _report_payload(report: EvaluationReport) -> dict[str, Any]:
         "rubric_version": report.rubric_version,
         "measured_metrics": report.measured_metrics,
         "ai_assessments": (
-            {key: value for key, value in assessments.items() if not key.startswith("_")}
-            if report.ai_assessments is not None
-            else None
-        ),
+            filtered if filtered else None
+        ) if report.ai_assessments is not None else None,
         "provider": assessments.get("_provider"),
         "model": assessments.get("_model"),
         "error": report.error,
-        "guidance_note": GUIDANCE_NOTE,
+        "guidance_note": guidance,
         "created_at": report.created_at.isoformat() if report.created_at else None,
     }
 
 
 def _make_coaching_plan(
-    report: EvaluationReport, user_id: str, role: str, assessments: dict[str, Any], plan_length: int = 7
+    report: EvaluationReport, user_id: str, role: str, assessments: dict[str, Any], plan_length: int = 7, is_demo: bool = False
 ) -> CoachingPlan:
     exercises = assessments["practice_exercises"]
     weakest_categories = sorted(
@@ -154,6 +317,7 @@ def _make_coaching_plan(
         "total_days": len(all_days),
         "target_role": role,
         "plan_length": plan_length,
+        "is_demo": is_demo,
         "plan_selection_rule": (
             "7-day plan for mild weakness (<=3 weak rubric categories); "
             "12-day plan for significant weakness (>=4 weak categories) or "
@@ -218,8 +382,6 @@ async def get_evaluation_report(
     user: dict = Depends(get_current_user),
 ):
     session = await _owned_session(db, session_id, user["id"])
-    if session.is_demo:
-        raise HTTPException(status_code=409, detail="Simulated demo sessions do not have real evaluations")
     report = await db.scalar(
         select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
@@ -236,8 +398,8 @@ async def generate_evaluation_report(
     user: dict = Depends(get_current_user),
 ):
     session = await _owned_session(db, session_id, user["id"])
-    if session.is_demo:
-        raise HTTPException(status_code=409, detail="Simulated demo sessions do not have real evaluations")
+    if session.is_demo and not settings.DEMO_MODE:
+        raise HTTPException(status_code=403, detail="Simulated demo evaluations are disabled")
 
     existing = await db.scalar(
         select(EvaluationReport).where(EvaluationReport.session_id == session_id)
@@ -245,7 +407,66 @@ async def generate_evaluation_report(
     if existing is not None:
         return _report_payload(existing)
     if session.current_state != "completed":
-        raise HTTPException(status_code=409, detail="Only completed real sessions can be evaluated")
+        raise HTTPException(status_code=409, detail="Only completed sessions can be evaluated")
+
+    if session.is_demo:
+        transcripts = list(
+            (
+                await db.scalars(
+                    select(Transcript)
+                    .where(Transcript.session_id == session_id)
+                    .order_by(Transcript.id)
+                )
+            ).all()
+        )
+        generated = _generate_demo_evaluation(session, transcripts, plan_length=plan_length)
+        report = EvaluationReport(
+            session_id=session_id,
+            status=generated["status"],
+            rubric_version=generated["rubric_version"],
+            measured_metrics=generated["measured_metrics"],
+            ai_assessments=(
+                {**generated["ai_assessments"]} if generated["ai_assessments"] is not None else None
+            ),
+            error=generated["error"],
+        )
+        db.add(report)
+        try:
+            await db.commit()
+            await db.refresh(report)
+        except IntegrityError:
+            await db.rollback()
+            existing = await db.scalar(
+                select(EvaluationReport).where(EvaluationReport.session_id == session_id)
+            )
+            if existing is not None:
+                return _report_payload(existing)
+            raise
+        non_meta = (
+            {k: v for k, v in generated["ai_assessments"].items() if not k.startswith("_")}
+            if generated["ai_assessments"] is not None
+            else {}
+        )
+        demo_plan_length = plan_length
+        if non_meta:
+            category_scores = generated["ai_assessments"].get("category_scores", {})
+            weak_count = sum(
+                1 for s in category_scores.values() if isinstance(s, dict) and s.get("score", 5) < 3
+            )
+            demo_plan_length = 12 if weak_count >= 4 else 7
+        if non_meta:
+            db.add(
+                _make_coaching_plan(
+                    report,
+                    user["id"],
+                    session.role,
+                    generated["ai_assessments"],
+                    plan_length=demo_plan_length,
+                    is_demo=True,
+                )
+            )
+            await db.commit()
+        return _report_payload(report)
 
     rubric = load_rubric(settings.EVALUATION_RUBRIC_WEIGHTS or None)
     transcripts = list(
@@ -340,15 +561,22 @@ async def generate_evaluation_report(
             else None
         )
         report.error = generated["error"]
+        real_plan_length = plan_length
         if generated["ai_assessments"] is not None:
             report.overall_score = generated["ai_assessments"]["overall_score"]
+            category_scores = generated["ai_assessments"].get("category_scores", {})
+            weak_count = sum(
+                1 for s in category_scores.values() if isinstance(s, dict) and s.get("score", 5) < 3
+            )
+            real_plan_length = 12 if weak_count >= 4 else 7
             db.add(
                 _make_coaching_plan(
                     report,
                     user["id"],
                     session.role,
                     generated["ai_assessments"],
-                    plan_length=plan_length,
+                    plan_length=real_plan_length,
+                    is_demo=False,
                 )
             )
         await db.commit()

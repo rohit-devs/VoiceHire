@@ -19,7 +19,10 @@ export default function CoachPage() {
     try {
       const reports = await interviewService.getUserReports();
       const candidates = reports
-        .filter((report: EvaluationReport) => report.status === "completed" && report.ai_assessments)
+        .filter(
+          (report: EvaluationReport) =>
+            report.status === "completed" && report.ai_assessments && report.provider !== "demo"
+        )
         .sort((left, right) => (right.created_at ?? "").localeCompare(left.created_at ?? ""));
       let latestPlan: CoachingPlan | null = null;
       for (const report of candidates) {

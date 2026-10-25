@@ -101,9 +101,18 @@ export default function ReportPage() {
         <section className="mx-auto max-w-5xl space-y-7">
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
-            <h1 className="text-3xl font-bold text-white">Interview evaluation</h1>
+            <h1 className="text-3xl font-bold text-white">
+              Interview evaluation
+              {report?.provider === "demo" && (
+                <span className="text-[10px] font-semibold text-amber-200 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 ml-2">
+                  Demo / Simulated
+                </span>
+              )}
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              AI scores are guidance for practice, not proof of competence.
+              {report?.provider === "demo"
+                ? "Demo scores are heuristic simulations, not AI-generated assessments."
+                : "AI scores are guidance for practice, not proof of competence."}
             </p>
             </div>
             {!loading && !error && report?.ai_assessments && (
@@ -175,7 +184,7 @@ export default function ReportPage() {
                 <section aria-labelledby="ai-heading" className="space-y-5">
                   <div>
                     <h2 id="ai-heading" className="text-xl font-semibold text-white">
-                      AI judgments
+                      {report.provider === "demo" ? "Demo evaluation" : "AI judgments"}
                     </h2>
                     <p className="mt-1 text-sm text-amber-200">{report.guidance_note}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -184,17 +193,25 @@ export default function ReportPage() {
                     </p>
                   </div>
                   <Card className="border-violet-400/20 bg-violet-400/[0.05] p-5 sm:p-6">
-                    <p className="text-sm font-medium text-slate-200">Score summary · AI judgment · 0–5</p>
+                    <p className="text-sm font-medium text-slate-200">Score summary ·
+                    {report.provider === "demo" ? "Demo heuristic" : "AI judgment"} · 0–5</p>
                     <p className="mt-2 text-4xl font-bold tabular-nums text-white">
                       {report.ai_assessments.overall_score.toFixed(2)} <span className="text-2xl text-slate-300">/ 5</span>
                     </p>
-                    <p className="mt-2 text-sm text-slate-300">Weighted rubric score from the persisted assessment.</p>
+                    <p className="mt-2 text-sm text-slate-300">
+                      {report.provider === "demo"
+                        ? "Heuristic score from the simulated demo evaluation."
+                        : "Weighted rubric score from the persisted assessment."}
+                    </p>
                   </Card>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {Object.entries(report.ai_assessments.category_scores).map(([category, assessment]) => (
                       <article key={category} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                         <h3 className="font-medium capitalize text-white">{category.replace(/_/g, " ")}</h3>
-                        <p className="mt-1 text-sm text-violet-200">{assessment.score} / 5 · AI judgment</p>
+                        <p className="mt-1 text-sm text-violet-200">
+                          {assessment.score} / 5 ·
+                          {report.provider === "demo" ? "Demo heuristic" : "AI judgment"}
+                        </p>
                         <p className="mt-2 text-sm text-muted-foreground">{assessment.rationale}</p>
                       </article>
                     ))}
@@ -239,7 +256,9 @@ export default function ReportPage() {
                   </Card>
                   <section aria-labelledby="coaching-heading" className="space-y-4">
                     <div>
-                      <h3 id="coaching-heading" className="text-xl font-semibold text-white">7-day coaching plan</h3>
+                      <h3 id="coaching-heading" className="text-xl font-semibold text-white">
+                        {report.provider === "demo" ? "Demo coaching plan" : "7-day coaching plan"}
+                      </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Saved practice tasks are shown on their assigned days. Days without a persisted task are left intentionally blank.
                       </p>

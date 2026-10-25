@@ -454,7 +454,7 @@ async def test_repeat_interview_generates_new_plan(monkeypatch):
         )
         assert plan1.status_code == 200, plan1.text
         plan1_data = plan1.json()
-        assert plan1_data["total_days"] == 7
+        assert plan1_data["total_days"] == 12
 
         # Second interview (repeat)
         sid2 = await _create_session_and_transcripts(client, guest_id, "session-2")
@@ -469,7 +469,7 @@ async def test_repeat_interview_generates_new_plan(monkeypatch):
         )
         assert plan2.status_code == 200, plan2.text
         plan2_data = plan2.json()
-        assert plan2_data["total_days"] == 7
+        assert plan2_data["total_days"] == 12
 
         # Plans are for different sessions (different IDs)
         assert plan1_data["interview_id"] != plan2_data["interview_id"]

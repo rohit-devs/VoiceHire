@@ -463,12 +463,42 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
         )
         assert created.status_code == 200, created.text
         demo_id = created.json()["id"]
-        blocked_demo = await client.post(
+        # Start and end the demo session so it is eligible for evaluation.
+        started = await client.post(
+            f"/api/interviews/sessions/{demo_id}/start", headers={"X-Guest-Id": guest_id}
+        )
+        assert started.status_code == 200, started.text
+        ended = await client.post(
+            f"/api/interviews/sessions/{demo_id}/end",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert ended.status_code == 200, ended.text
+        # Demo sessions can now generate a clearly-labeled demo evaluation.
+        demo_report = await client.post(
             f"/api/evaluations/sessions/{demo_id}/report/generate",
             headers={"X-Guest-Id": guest_id},
         )
-        assert blocked_demo.status_code == 409
+        assert demo_report.status_code == 200, demo_report.text
+        demo_body = demo_report.json()
+        assert demo_body["provider"] == "demo"
+        assert demo_body["model"] == "simulated"
+        assert "heuristic" in demo_body["guidance_note"].lower()
+        assert provider.calls == 0  # No LLM used for demo evaluation
+
+        # Idempotent re-generation returns the same report.
+        repeated = await client.post(
+            f"/api/evaluations/sessions/{demo_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert repeated.json() == demo_body
         assert provider.calls == 0
+
+        # Retrieved report matches the generated one.
+        reloaded = await client.get(
+            f"/api/evaluations/sessions/{demo_id}/report",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert reloaded.json() == demo_body
 
         real = await client.post(
             "/api/interviews/sessions",
@@ -497,6 +527,145 @@ async def test_report_ownership_and_demo_isolation(monkeypatch):
             headers={"X-Guest-Id": guest_id},
         )
         assert unauthorized.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_demo_evaluation_generates_heuristic_report_and_coaching_plan(monkeypatch):
+    from app.routers import evaluations
+
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built Python APIs and PostgreSQL services.",
+                "job_category": "backend engineering",
+                "is_demo": True,
+                "duration_seconds": 600,
+            },
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers={"X-Guest-Id": guest_id}
+        )
+        assert started.status_code == 200, started.text
+
+        # Submit candidate answers and generate questions to build a transcript.
+        answer = "I built a caching layer that reduced API latency by 40 percent."
+        for _ in range(3):
+            submitted = await client.post(
+                f"/api/interviews/sessions/{session_id}/transcript",
+                json={"speaker": "candidate", "message": answer},
+                headers={"X-Guest-Id": guest_id},
+            )
+            assert submitted.status_code == 200, submitted.text
+            nq = await client.post(
+                f"/api/interviews/sessions/{session_id}/generate-question",
+                json={"candidate_transcript": answer},
+                headers={"X-Guest-Id": guest_id},
+            )
+            assert nq.status_code == 200, nq.text
+
+        # End the interview so it is eligible for evaluation.
+        ended = await client.post(
+            f"/api/interviews/sessions/{session_id}/end",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert ended.status_code == 200, ended.text
+
+        # Generate the demo evaluation.
+        generated = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert generated.status_code == 200, generated.text
+        report = generated.json()
+        assert report["status"] == "completed"
+        assert report["provider"] == "demo"
+        assert report["model"] == "simulated"
+        assert "heuristic" in report["guidance_note"].lower()
+        assert report["ai_assessments"] is not None
+        assert report["ai_assessments"]["overall_score"] >= 0
+        assert report["ai_assessments"]["overall_score"] <= 5
+        assert len(report["ai_assessments"]["practice_exercises"]) == 7
+        assert report["measured_metrics"]["questions_answered"]["value"] >= 1
+
+        # Idempotent re-generation returns the same report.
+        repeated = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert repeated.json() == report
+
+        # Retrieved report matches.
+        reloaded = await client.get(
+            f"/api/evaluations/sessions/{session_id}/report",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert reloaded.json() == report
+
+        # Coaching plan is persisted.
+        plan = await client.get(
+            f"/api/evaluations/sessions/{session_id}/coaching-plan",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert plan.status_code == 200, plan.text
+        assert plan.json()["total_days"] == 7
+
+
+@pytest.mark.asyncio
+async def test_demo_evaluation_insufficient_data(monkeypatch):
+    from app.routers import evaluations
+
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    guest_id = str(uuid4())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        created = await client.post(
+            "/api/interviews/sessions",
+            json={
+                "role": "Backend Engineer",
+                "resume_text": "Built APIs.",
+                "job_category": "backend",
+                "is_demo": True,
+                "duration_seconds": 600,
+            },
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert created.status_code == 200, created.text
+        session_id = created.json()["id"]
+
+        started = await client.post(
+            f"/api/interviews/sessions/{session_id}/start", headers={"X-Guest-Id": guest_id}
+        )
+        assert started.status_code == 200, started.text
+
+        ended = await client.post(
+            f"/api/interviews/sessions/{session_id}/end",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert ended.status_code == 200, ended.text
+
+        generated = await client.post(
+            f"/api/evaluations/sessions/{session_id}/report/generate",
+            headers={"X-Guest-Id": guest_id},
+        )
+        assert generated.status_code == 200, generated.text
+        report = generated.json()
+        assert report["status"] == "insufficient_data"
+        assert report["ai_assessments"] is None
+        assert report["provider"] == "demo"
+        assert report["model"] == "simulated"
 
 
 @pytest.mark.asyncio
