@@ -168,41 +168,72 @@ export default function NewInterviewPage() {
     { id: "review", label: "Review", icon: Check },
   ];
 
+  const inputClass =
+    "w-full border border-neutral-800 bg-[#0a0a0a] px-4 py-3 text-sm text-white placeholder:text-neutral-600 focus:border-[#e8321e] focus:outline-none transition-colors";
+
   return (
     <AppShell>
-      <div className="min-h-screen bg-[#0a0a0f]">
-        <div className="mx-auto max-w-3xl px-8 py-10">
+      {/* Editorial theme (self-contained, no external CSS file needed) */}
+      <style>{`
+        .vh-display {
+          font-family: Impact, "Haettenschweiler", "Arial Narrow Bold", "Arial Narrow", sans-serif;
+          text-transform: uppercase;
+          letter-spacing: 0.01em;
+          line-height: 0.9;
+          font-weight: 400;
+        }
+        .vh-label {
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+        }
+      `}</style>
+
+      <div className="min-h-screen bg-[#0a0a0a]">
+        <div className="mx-auto max-w-4xl px-5 py-10 sm:px-8">
           {/* Header */}
           <div className="mb-10">
-            <h1 className="text-3xl font-bold text-white">New Interview</h1>
-            <p className="text-muted-foreground mt-2">Configure your AI interview session</p>
+            <p className="vh-label text-[10px] font-bold text-[#e8321e]">
+              Step {String(currentStepIndex + 1).padStart(2, "0")} / 05
+            </p>
+            <h1 className="vh-display mt-3 text-5xl text-white sm:text-7xl">
+              New interview<span className="text-[#e8321e]">.</span>
+            </h1>
+            <p className="mt-3 text-sm text-neutral-500">
+              Configure your AI interview session
+            </p>
           </div>
 
-          {/* Progress Steps */}
-          <div className="mb-10">
-            <div className="flex items-center justify-between">
+          {/* Progress Steps — numbered editorial sequence */}
+          <div className="mb-8">
+            <div className="flex items-center">
               {steps.map((s, i) => (
-                <div key={s.id} className="flex items-center gap-2">
-                  <div className="flex items-center gap-2">
+                <div key={s.id} className="flex flex-1 items-center">
+                  <div className="flex flex-col items-center gap-2">
                     <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all ${
-                        i <= currentStepIndex
-                          ? "border-violet-500/50 bg-violet-500/20 text-violet-300"
-                          : "border-white/10 bg-white/5 text-muted-foreground"
+                      className={`vh-display flex h-11 w-11 items-center justify-center border text-lg transition-colors duration-200 ${
+                        i < currentStepIndex
+                          ? "border-[#e8321e] bg-[#e8321e] text-white"
+                          : i === currentStepIndex
+                            ? "border-[#e8321e] bg-[#e8321e]/10 text-[#e8321e]"
+                            : "border-neutral-800 bg-[#0d0d0d] text-neutral-600"
                       }`}
                     >
-                      <s.icon className="h-4 w-4" />
+                      {i < currentStepIndex ? <Check className="h-4 w-4" /> : String(i + 1).padStart(2, "0")}
                     </div>
                     <span
-                      className={`text-sm font-medium hidden sm:inline ${
-                        i <= currentStepIndex ? "text-foreground" : "text-muted-foreground"
+                      className={`vh-label hidden text-[9px] font-bold sm:block ${
+                        i <= currentStepIndex ? "text-neutral-300" : "text-neutral-600"
                       }`}
                     >
                       {s.label}
                     </span>
                   </div>
                   {i < steps.length - 1 && (
-                    <div className={`hidden sm:block h-px w-8 mx-2 ${i < currentStepIndex ? "bg-violet-500/50" : "bg-white/10"}`} />
+                    <div
+                      className={`mx-2 mb-0 h-px flex-1 sm:mb-5 ${
+                        i < currentStepIndex ? "bg-[#e8321e]" : "bg-neutral-800"
+                      }`}
+                    />
                   )}
                 </div>
               ))}
@@ -210,12 +241,19 @@ export default function NewInterviewPage() {
           </div>
 
           {/* Step Content */}
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-8">
+          <div className="relative border border-neutral-800 bg-[#0d0d0d] p-6 sm:p-10">
+            <span aria-hidden="true" className="absolute left-0 top-0 h-2 w-2 bg-[#e8321e]" />
+
             {step === "role" && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white">Role & Interview Type</h2>
+              <div className="space-y-7">
+                <div>
+                  <p className="vh-label text-[10px] font-bold text-[#e8321e]">01 — Target</p>
+                  <h2 className="vh-display mt-2 text-3xl text-white sm:text-4xl">Role & type</h2>
+                </div>
                 <div className="space-y-2">
-                  <label htmlFor="interview-role" className="text-sm font-medium text-slate-300">Job Role</label>
+                  <label htmlFor="interview-role" className="vh-label text-[10px] font-bold text-neutral-400">
+                    Job role
+                  </label>
                   <input
                     id="interview-role"
                     type="text"
@@ -223,50 +261,58 @@ export default function NewInterviewPage() {
                     value={config.role}
                     onChange={(e) => updateConfig({ role: e.target.value })}
                     placeholder="e.g. Full Stack Developer"
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                    className={inputClass}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="experience-level" className="text-sm font-medium text-slate-300">Experience Level</label>
+                  <label htmlFor="experience-level" className="vh-label text-[10px] font-bold text-neutral-400">
+                    Experience level
+                  </label>
                   <select
                     id="experience-level"
                     value={config.experienceLevel}
                     onChange={(e) => updateConfig({ experienceLevel: e.target.value })}
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                    className={`${inputClass} appearance-none`}
                   >
-                    <option value="" className="bg-[#1a1a2e]">Select experience level</option>
+                    <option value="" className="bg-[#0a0a0a]">Select experience level</option>
                     {EXPERIENCE_LEVELS.map((level) => (
-                      <option key={level} value={level} className="bg-[#1a1a2e]">{level}</option>
+                      <option key={level} value={level} className="bg-[#0a0a0a]">{level}</option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Company</label>
+                  <label htmlFor="interview-company" className="vh-label text-[10px] font-bold text-neutral-400">
+                    Company
+                  </label>
                   <input
+                    id="interview-company"
                     type="text"
                     value={config.company}
                     onChange={(e) => updateConfig({ company: e.target.value })}
                     placeholder="e.g. Amazon, Google, Startup"
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                    className={inputClass}
                   />
                 </div>
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-slate-300">Interview Type</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="vh-label text-[10px] font-bold text-neutral-400">Interview type</label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {INTERVIEW_TYPES.map((type) => (
                       <button
                         type="button"
                         aria-pressed={config.interviewType === type.value}
                         key={type.value}
                         onClick={() => updateConfig({ interviewType: type.value })}
-                        className={`rounded-lg border p-4 text-left transition-all ${
+                        className={`relative border p-4 text-left transition-colors duration-200 ${
                           config.interviewType === type.value
-                            ? "border-violet-500/50 bg-violet-500/10"
-                            : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                            ? "border-[#e8321e] bg-[#e8321e]/10"
+                            : "border-neutral-800 bg-[#0a0a0a] hover:border-neutral-600"
                         }`}
                       >
-                        <p className="text-sm font-medium text-white">{type.label}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{type.desc}</p>
+                        {config.interviewType === type.value && (
+                          <span aria-hidden="true" className="absolute right-0 top-0 h-2 w-2 bg-[#e8321e]" />
+                        )}
+                        <p className="vh-display text-lg text-white">{type.label}</p>
+                        <p className="mt-1 text-xs text-neutral-500">{type.desc}</p>
                       </button>
                     ))}
                   </div>
@@ -275,10 +321,13 @@ export default function NewInterviewPage() {
             )}
 
             {step === "profile" && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white">Candidate Profile</h2>
+              <div className="space-y-7">
+                <div>
+                  <p className="vh-label text-[10px] font-bold text-[#e8321e]">02 — Background</p>
+                  <h2 className="vh-display mt-2 text-3xl text-white sm:text-4xl">Candidate profile</h2>
+                </div>
                 <label htmlFor="resume-text" className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-300">Resume text</span>
+                  <span className="vh-label text-[10px] font-bold text-neutral-400">Resume text</span>
                   <textarea
                     id="resume-text"
                     value={config.resumeText}
@@ -286,12 +335,16 @@ export default function NewInterviewPage() {
                     placeholder="Paste your resume text here. It will be used to tailor interview questions."
                     rows={9}
                     maxLength={20000}
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
+                    className={`${inputClass} resize-y`}
                   />
-                  <span className="text-xs text-muted-foreground">{config.resumeText.length}/20,000 characters</span>
+                  <span className="block text-xs text-neutral-600">
+                    {config.resumeText.length}/20,000 characters
+                  </span>
                 </label>
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-300">Or upload a plain-text resume</span>
+                  <span className="vh-label text-[10px] font-bold text-neutral-400">
+                    Or upload a plain-text resume
+                  </span>
                   <input
                     type="file"
                     accept=".txt,text/plain"
@@ -311,17 +364,22 @@ export default function NewInterviewPage() {
                         setError("Unable to read this resume file. Paste the text instead.");
                       }
                     }}
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-violet-500/20 file:px-3 file:py-1.5 file:text-violet-100"
+                    className={`${inputClass} file:mr-4 file:border-0 file:bg-[#e8321e] file:px-4 file:py-1.5 file:text-xs file:font-bold file:uppercase file:tracking-widest file:text-white hover:file:bg-[#ff3b2d]`}
                   />
                 </label>
               </div>
             )}
 
             {step === "jd" && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white">Job Description</h2>
+              <div className="space-y-7">
+                <div>
+                  <p className="vh-label text-[10px] font-bold text-[#e8321e]">03 — Context</p>
+                  <h2 className="vh-display mt-2 text-3xl text-white sm:text-4xl">Job description</h2>
+                </div>
                 <div className="space-y-2">
-                  <label htmlFor="job-description" className="text-sm font-medium text-slate-300">Paste Job Description</label>
+                  <label htmlFor="job-description" className="vh-label text-[10px] font-bold text-neutral-400">
+                    Paste job description
+                  </label>
                   <textarea
                     id="job-description"
                     value={config.jdText}
@@ -329,65 +387,75 @@ export default function NewInterviewPage() {
                     placeholder="Paste the job description, or provide a job category below."
                     rows={6}
                     maxLength={20000}
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none"
+                    className={`${inputClass} resize-none`}
                   />
                 </div>
-
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-300">Job category (used if no description is pasted)</span>
+                  <span className="vh-label text-[10px] font-bold text-neutral-400">
+                    Job category (used if no description is pasted)
+                  </span>
                   <input
                     value={config.jobCategory}
                     onChange={(event) => updateConfig({ jobCategory: event.target.value })}
                     placeholder="e.g. backend engineering"
                     maxLength={100}
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-muted-foreground"
+                    className={inputClass}
                   />
                 </label>
               </div>
             )}
 
             {step === "preferences" && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white">Interview Preferences</h2>
+              <div className="space-y-7">
+                <div>
+                  <p className="vh-label text-[10px] font-bold text-[#e8321e]">04 — Style</p>
+                  <h2 className="vh-display mt-2 text-3xl text-white sm:text-4xl">Preferences</h2>
+                </div>
 
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-slate-300">AI Persona</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="vh-label text-[10px] font-bold text-neutral-400">AI persona</label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {PERSONAS.map((p) => (
                       <button
                         type="button"
                         aria-pressed={config.persona === p.value}
                         key={p.value}
                         onClick={() => updateConfig({ persona: p.value })}
-                        className={`rounded-lg border p-4 text-left transition-all ${
+                        className={`relative border p-4 text-left transition-colors duration-200 ${
                           config.persona === p.value
-                            ? "border-violet-500/50 bg-violet-500/10"
-                            : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                            ? "border-[#e8321e] bg-[#e8321e]/10"
+                            : "border-neutral-800 bg-[#0a0a0a] hover:border-neutral-600"
                         }`}
                       >
-                        <p className="text-sm font-medium text-white">{p.label}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{p.desc}</p>
+                        {config.persona === p.value && (
+                          <span aria-hidden="true" className="absolute right-0 top-0 h-2 w-2 bg-[#e8321e]" />
+                        )}
+                        <p className="vh-display text-lg text-white">{p.label}</p>
+                        <p className="mt-1 text-xs text-neutral-500">{p.desc}</p>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <label className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+                <label className="flex items-start gap-3 border border-[#e8321e]/30 bg-[#e8321e]/[0.06] p-4">
                   <input
                     aria-label="Simulated demo"
                     type="checkbox"
                     checked={config.isDemo}
                     onChange={(event) => updateConfig({ isDemo: event.target.checked })}
-                    className="mt-1"
+                    className="mt-1 accent-[#e8321e]"
                   />
                   <span>
-                    <span className="block text-sm font-medium text-amber-200">Simulated demo</span>
-                    <span className="mt-1 block text-xs text-amber-100/70">Uses a deterministic simulated interviewer. This session and its transcript are marked as simulated and are excluded from evaluations.</span>
+                    <span className="vh-label block text-[10px] font-bold text-[#e8321e]">Simulated demo</span>
+                    <span className="mt-2 block text-xs leading-relaxed text-neutral-400">
+                      Uses a deterministic simulated interviewer. This session and its transcript
+                      are marked as simulated and are excluded from evaluations.
+                    </span>
                   </span>
                 </label>
 
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-slate-300">Difficulty</label>
+                  <label className="vh-label text-[10px] font-bold text-neutral-400">Difficulty</label>
                   <div className="grid grid-cols-3 gap-3">
                     {DIFFICULTIES.map((d) => (
                       <button
@@ -395,20 +463,21 @@ export default function NewInterviewPage() {
                         aria-pressed={config.difficulty === d.value}
                         key={d.value}
                         onClick={() => updateConfig({ difficulty: d.value })}
-                        className={`rounded-lg border p-3 text-center transition-all ${
+                        className={`border p-3 text-center transition-colors duration-200 ${
                           config.difficulty === d.value
-                            ? "border-violet-500/50 bg-violet-500/10"
-                            : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                            ? "border-[#e8321e] bg-[#e8321e]/10"
+                            : "border-neutral-800 bg-[#0a0a0a] hover:border-neutral-600"
                         }`}
                       >
-                        <p className="text-sm font-medium text-white">{d.label}</p>
+                        <p className="vh-display text-lg text-white">{d.label}</p>
+                        <p className="mt-1 hidden text-[10px] text-neutral-500 sm:block">{d.desc}</p>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-slate-300">Duration</label>
+                  <label className="vh-label text-[10px] font-bold text-neutral-400">Duration</label>
                   <div className="grid grid-cols-3 gap-3">
                     {DURATIONS.map((d) => (
                       <button
@@ -416,13 +485,13 @@ export default function NewInterviewPage() {
                         aria-pressed={config.duration === d.value}
                         key={d.value}
                         onClick={() => updateConfig({ duration: d.value })}
-                        className={`rounded-lg border p-3 text-center transition-all ${
+                        className={`border p-3 text-center transition-colors duration-200 ${
                           config.duration === d.value
-                            ? "border-violet-500/50 bg-violet-500/10"
-                            : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                            ? "border-[#e8321e] bg-[#e8321e]/10"
+                            : "border-neutral-800 bg-[#0a0a0a] hover:border-neutral-600"
                         }`}
                       >
-                        <p className="text-sm font-medium text-white">{d.label}</p>
+                        <p className="vh-display text-lg text-white">{d.label}</p>
                       </button>
                     ))}
                   </div>
@@ -431,9 +500,12 @@ export default function NewInterviewPage() {
             )}
 
             {step === "review" && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white">Review Configuration</h2>
-                <div className="space-y-4">
+              <div className="space-y-7">
+                <div>
+                  <p className="vh-label text-[10px] font-bold text-[#e8321e]">05 — Confirm</p>
+                  <h2 className="vh-display mt-2 text-3xl text-white sm:text-4xl">Review configuration</h2>
+                </div>
+                <div className="border border-neutral-800">
                   <ReviewRow label="Company" value={config.company || ""} />
                   <ReviewRow label="Role" value={config.role} />
                   <ReviewRow label="Experience" value={config.experienceLevel} />
@@ -443,33 +515,39 @@ export default function NewInterviewPage() {
                   <ReviewRow label="Duration" value={`${config.duration} min`} />
                   <ReviewRow label="Resume" value={`${config.resumeText.length} characters provided`} />
                   <ReviewRow label="Job context" value={config.jdText.trim() ? "Job description provided" : config.jobCategory} />
-                  <ReviewRow label="Session type" value={config.isDemo ? "Simulated demo" : "Real interview"} />
+                  <ReviewRow
+                    label="Session type"
+                    value={config.isDemo ? "Simulated demo" : "Real interview"}
+                    highlight={config.isDemo}
+                  />
                 </div>
               </div>
             )}
 
-            {/* Navigation Buttons */}
-            {error && <p role="alert" className="mt-4 text-sm text-rose-400">{error}</p>}
-            <div className="mt-8 flex items-center justify-between pt-6 border-t border-white/10">
+            {/* Error + Navigation */}
+            {error && (
+              <p role="alert" className="mt-6 border border-[#e8321e]/40 bg-[#e8321e]/10 px-4 py-3 text-sm text-[#ff6a5b]">
+                {error}
+              </p>
+            )}
+            <div className="mt-10 flex items-center justify-between border-t border-neutral-800 pt-6">
               <button
                 onClick={handleBack}
                 disabled={currentStepIndex === 0}
-                className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-colors ${
-                  currentStepIndex === 0
-                    ? "invisible"
-                    : "text-slate-300 hover:text-white hover:bg-white/5"
+                className={`group inline-flex items-center gap-2 border border-neutral-800 px-5 py-3 text-xs font-bold uppercase tracking-widest text-neutral-400 transition-colors hover:border-[#e8321e] hover:text-white ${
+                  currentStepIndex === 0 ? "invisible" : ""
                 }`}
               >
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
                 Back
               </button>
               <button
                 onClick={handleNext}
                 disabled={!canProceed() || loading}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group inline-flex items-center gap-3 bg-[#e8321e] px-7 py-3 text-xs font-bold uppercase tracking-widest text-white transition-colors hover:bg-[#ff3b2d] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {loading ? "Creating..." : step === "review" ? "Start Interview" : "Continue"}
-                <ArrowRight className="h-4 w-4" />
+                {loading ? "Creating..." : step === "review" ? "Start interview" : "Continue"}
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </button>
             </div>
           </div>
@@ -479,11 +557,17 @@ export default function NewInterviewPage() {
   );
 }
 
-function ReviewRow({ label, value }: { label: string; value?: string }) {
+function ReviewRow({ label, value, highlight }: { label: string; value?: string; highlight?: boolean }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium text-white capitalize">{value}</span>
+    <div className="flex items-center justify-between gap-4 border-b border-neutral-800 px-5 py-3.5 last:border-0">
+      <span className="vh-label text-[10px] font-bold text-neutral-500">{label}</span>
+      {highlight ? (
+        <span className="bg-[#e8321e] px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
+          {value}
+        </span>
+      ) : (
+        <span className="text-sm font-medium capitalize text-white">{value}</span>
+      )}
     </div>
   );
 }
