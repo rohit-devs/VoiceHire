@@ -26,6 +26,7 @@ from app.interview.prompt_chaining import (
     PromptChainCoordinator,
     QuestionGenerationRequest,
 )
+from app.interview.provider_fallback import FallbackProvider
 from app.interview.resume_parser import ResumeParser
 from app.interview.token_budget import (
     TokenBudgetExceeded,
@@ -193,6 +194,8 @@ def _make_coordinator(is_demo: bool) -> PromptChainCoordinator | None:
         provider = DemoProvider()
     elif provider.simulated:
         return None
+    else:
+        provider = FallbackProvider()
     return PromptChainCoordinator(LegacyProviderAdapter(provider))
 
 
@@ -545,6 +548,7 @@ async def start_interview(
                     conversation=[],
                     elapsed_seconds=0,
                     question_budget=question_budget,
+                    is_opener=True,
                 )
             )
         except TokenBudgetExceeded as exc:
