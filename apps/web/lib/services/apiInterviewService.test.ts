@@ -196,4 +196,58 @@ describe("apiInterviewService request handling", () => {
     await expect(apiInterviewService.getHistory()).rejects.toThrow("persistently down");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it("sends Idempotency-Key header on createInterview", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "s1", role: "Engineer", current_state: "created" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiInterviewService.createInterview({ role: "Engineer" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((options.headers as Record<string, string>)["Idempotency-Key"]).toBeDefined();
+    expect(typeof (options.headers as Record<string, string>)["Idempotency-Key"]).toBe("string");
+  });
+
+  it("sends Idempotency-Key header on submitTranscript with stable key per message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "ok" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiInterviewService.submitTranscript("session-1", "answer", { messageId: "msg-1" });
+    await apiInterviewService.submitTranscript("session-1", "answer", { messageId: "msg-1" });
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][];
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1].headers).toMatchObject({
+      "Idempotency-Key": "session.transcript:session-1:msg-1",
+    });
+    expect(calls[1][1].headers).toMatchObject({
+      "Idempotency-Key": "session.transcript:session-1:msg-1",
+    });
+  });
+
+  it("sends Idempotency-Key header on start, generate-question, and end", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiInterviewService.startInterview("session-1");
+    await apiInterviewService.generateNextQuestion("session-1", "answer");
+    await apiInterviewService.endInterview("session-1");
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][];
+    expect(calls).toHaveLength(3);
+    expect(calls[0][1].headers).toMatchObject({ "Idempotency-Key": "session.start:session-1" });
+    expect(calls[1][1].headers).toMatchObject({
+      "Idempotency-Key": "session.generate-question:session-1",
+    });
+    expect(calls[2][1].headers).toMatchObject({ "Idempotency-Key": "session.end:session-1" });
+  });
 });

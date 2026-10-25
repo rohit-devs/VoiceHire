@@ -49,13 +49,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 class ApiInterviewService implements InterviewService {
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(
+    path: string,
+    options: RequestInit = {},
+    idempotencyKey?: string,
+  ): Promise<T> {
     const method = options.method ?? "GET";
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     const guestId = getGuestId();
     headers[GUEST_ID_HEADER] = guestId;
+    if (idempotencyKey) {
+      headers["Idempotency-Key"] = idempotencyKey;
+    }
 
     const fetchWithTimeout = async (): Promise<Response> => {
       const controller = new AbortController();
@@ -143,6 +150,7 @@ class ApiInterviewService implements InterviewService {
     jobCategory?: string;
     isDemo?: boolean;
   }): Promise<InterviewConfig> {
+    const idempotencyKey = crypto.randomUUID();
     const response = await this.request<{
       id: string;
       role: string;
@@ -173,7 +181,7 @@ class ApiInterviewService implements InterviewService {
         resume_text: config.resumeText ?? config.resume?.experience,
         is_demo: config.isDemo ?? false,
       }),
-    });
+    }, idempotencyKey);
     return {
       id: response.id,
       role: response.role,
@@ -243,7 +251,7 @@ class ApiInterviewService implements InterviewService {
       timestamp_ms?: number;
     }>(`/api/interviews/sessions/${id}/start`, {
       method: "POST",
-    });
+    }, `session.start:${id}`);
     return { sessionId: id, questions: [], ...response };
   }
 
@@ -256,6 +264,7 @@ class ApiInterviewService implements InterviewService {
       language?: "en" | "es" | "fr";
     } = {},
   ): Promise<TranscriptAck> {
+    const idempotencyKey = `session.transcript:${id}:${metadata.messageId ?? crypto.randomUUID()}`;
     return this.request<TranscriptAck>(`/api/interviews/sessions/${id}/transcript`, {
       method: "POST",
       body: JSON.stringify({
@@ -265,7 +274,7 @@ class ApiInterviewService implements InterviewService {
         duration_ms: metadata.durationMs ?? null,
         language: metadata.language ?? "en",
       }),
-    });
+    }, idempotencyKey);
   }
 
   async generateNextQuestion(id: string, candidateTranscript: string) {
@@ -281,13 +290,13 @@ class ApiInterviewService implements InterviewService {
     }>(`/api/interviews/sessions/${id}/generate-question`, {
       method: "POST",
       body: JSON.stringify({ candidate_transcript: candidateTranscript }),
-    });
+    }, `session.generate-question:${id}`);
   }
 
   async endInterview(id: string): Promise<void> {
     await this.request(`/api/interviews/sessions/${id}/end`, {
       method: "POST",
-    });
+    }, `session.end:${id}`);
   }
 
   async getReport(id: string): Promise<EvaluationReport> {
