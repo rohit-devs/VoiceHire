@@ -234,6 +234,25 @@ async def test_evaluation_fails_after_second_invalid_response_without_fabricatio
 
 
 @pytest.mark.asyncio
+async def test_evaluation_failure_logs_output_size(caplog):
+    """Evaluation failure must log the provider output size for diagnosis."""
+    provider = InvalidEvaluationProvider()
+    with caplog.at_level("WARNING", logger="app.interview.evaluation_engine"):
+        result = await generate_assessment(
+            session_id="evaluation-test",
+            session=_session(),
+            transcripts=_transcripts(),
+            context={"resume": "", "job_description": ""},
+            provider=provider,
+        )
+    assert result["status"] == "failed"
+    assert any(
+        "output_size" in rec.message and "Evaluation failed" in rec.message
+        for rec in caplog.records
+    ), f"Expected evaluation failure log with output_size, got: {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.asyncio
 async def test_prohibited_personal_inference_is_rejected_and_retried():
     provider = FairnessRetryProvider()
     result = await generate_assessment(

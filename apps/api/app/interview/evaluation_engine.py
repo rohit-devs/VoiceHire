@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 from pathlib import Path
@@ -14,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from app.interview.llm_provider import LLMProvider
 from app.interview.voice_metrics import calculate_voice_metrics
 from app.models import InterviewSession, Transcript
+
+logger = logging.getLogger(__name__)
 
 RUBRIC_PATH = Path(__file__).resolve().parents[4] / "packages" / "prompts" / "evaluator.yaml"
 MAX_EVALUATION_OUTPUT_TOKENS = 2600
@@ -302,6 +305,16 @@ async def generate_assessment(
                 pairs=pairs,
                 target_role=session.role,
             )
+            return {
+                "status": "completed",
+                "rubric_version": rubric["version"],
+                "measured_metrics": metrics,
+                "ai_assessments": output.model_dump(mode="json"),
+                "provider": completion.provider or type(provider).__name__.lower(),
+                "model": completion.model or getattr(provider, "model", "unknown"),
+                "error": None,
+                "tokens_used": tokens_used,
+            }
         except EvaluationOutputError as exc:
             last_error = exc
             if attempt == 0:
@@ -311,16 +324,14 @@ async def generate_assessment(
                 )
                 continue
             break
-        return {
-            "status": "completed",
-            "rubric_version": rubric["version"],
-            "measured_metrics": metrics,
-            "ai_assessments": output.model_dump(mode="json"),
-            "provider": completion.provider or type(provider).__name__.lower(),
-            "model": completion.model or getattr(provider, "model", "unknown"),
-            "error": None,
-            "tokens_used": tokens_used,
-        }
+    output_size = len(completion.text) if completion else 0
+    logger.warning(
+        "Evaluation failed for session_id=%s provider=%s output_size=%d error=%s",
+        session_id,
+        getattr(provider, "name", "unknown"),
+        output_size,
+        last_error,
+    )
     return {
         "status": "failed",
         "rubric_version": rubric["version"],
