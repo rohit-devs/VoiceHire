@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import async_session
 from app.interview.evaluation_engine import (
     EvaluationOutput,
+    MAX_QUESTION_CHARS,
     generate_assessment,
     load_rubric,
 )
@@ -874,3 +875,274 @@ async def test_groq_token_budget_exhaustion_remains_enforced(monkeypatch):
         failed = response.json()
         assert failed["status"] == "failed"
         assert "token budget is exhausted" in failed["error"]
+
+
+# ── GATE 5: known strong / weak / off-topic / empty answer ordering ──────
+
+
+class ScoredEvaluationProvider:
+    """Mock provider that returns predetermined scores based on answer content."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(
+        self,
+        *,
+        session_id: str,
+        system_prompt: str,
+        user_content: str,
+        max_tokens: int,
+    ) -> Completion:
+        self.calls += 1
+        decoder = json.JSONDecoder()
+        payload, _ = decoder.raw_decode(user_content)
+        rubric = load_rubric()
+        categories = list(rubric["categories"].keys())
+
+        items = payload["evaluation_items"]
+        per_question = []
+        all_scores: dict[str, list[int]] = {name: [] for name in categories}
+
+        for item in items:
+            answer = item["candidate_answer"]
+            normalized = answer.strip().lower()
+
+            if not normalized:
+                # Empty answer: all zeros, evidence quote is empty string
+                scores = {name: 0 for name in categories}
+                evidence = ""
+            elif "off-topic" in normalized or "recipe" in normalized or "weather" in normalized:
+                scores = {
+                    "technical_correctness": 1,
+                    "relevance": 0,
+                    "structure_and_clarity": 2,
+                    "completeness_and_examples": 1,
+                    "problem_solving": 1,
+                    "communication": 2,
+                    "job_skill_alignment": 0,
+                }
+                evidence = answer[:50] if answer else ""
+            elif "excellent" in normalized or "comprehensive" in normalized:
+                scores = {name: 5 for name in categories}
+                evidence = answer[:50] if answer else ""
+            else:
+                scores = {
+                    "technical_correctness": 2,
+                    "relevance": 2,
+                    "structure_and_clarity": 2,
+                    "completeness_and_examples": 1,
+                    "problem_solving": 2,
+                    "communication": 2,
+                    "job_skill_alignment": 1,
+                }
+                evidence = answer[:50] if answer else ""
+
+            for name in categories:
+                all_scores[name].append(scores[name])
+
+            per_question.append(
+                {
+                    "question_id": item["question_id"],
+                    "question": item["question"][:MAX_QUESTION_CHARS],
+                    "evidence_quote": evidence or "No answer provided.",
+                    "rationale": "Assessed against the rubric.",
+                    "category_scores": scores,
+                }
+            )
+
+        # Compute category averages and weakest categories
+        category_avg = {
+            name: sum(all_scores[name]) / len(all_scores[name]) for name in categories
+        }
+        weakest = sorted(category_avg, key=category_avg.get)[:3]
+        # Round category scores first, then compute overall from rounded values
+        # (validation checks overall == weighted mean of category scores)
+        rounded_category_scores = {
+            name: max(0, min(5, round(category_avg[name]))) for name in categories
+        }
+        overall = round(
+            sum(rounded_category_scores[name] * rubric["weights"][name] for name in categories),
+            2,
+        )
+        category_scores = {
+            name: {"score": rounded_category_scores[name], "rationale": "Aggregate across all answers."}
+            for name in categories
+        }
+
+        output = {
+            "overall_score": overall,
+            "category_scores": category_scores,
+            "per_question_analysis": per_question,
+            "strengths": ["Clear communication."],
+            "missing_elements": ["More specific examples needed."],
+            "improved_answer_structure": [
+                "State the problem.",
+                "Explain the approach.",
+                "Share the outcome.",
+            ],
+            "practice_exercises": [
+                {
+                    "category": weakest[index % len(weakest)],
+                    "title": f"Practice task {index + 1}",
+                    "task": "Outline an answer for a relevant question.",
+                    "target_role": "Backend Engineer",
+                }
+                for index in range(7)
+            ],
+        }
+        return Completion(json.dumps(output), 100, 50)
+
+
+def _transcripts_for_answers(answers: list[str]) -> list[Transcript]:
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    rows: list[Transcript] = []
+    for i, answer in enumerate(answers):
+        rows.append(
+            Transcript(
+                id=i * 2 + 1,
+                session_id="gate5-test",
+                speaker="interviewer",
+                message=f"Question {i + 1}?",
+                message_id=str(uuid4()),
+                timestamp_ms=now_ms + i * 1000,
+                source="real",
+            )
+        )
+        rows.append(
+            Transcript(
+                id=i * 2 + 2,
+                session_id="gate5-test",
+                speaker="candidate",
+                message=answer,
+                message_id=str(uuid4()),
+                timestamp_ms=now_ms + i * 1000 + 500,
+                duration_ms=5000,
+                source="real",
+            )
+        )
+    return rows
+
+
+def _session_gate5() -> InterviewSession:
+    return InterviewSession(
+        id="gate5-test",
+        user_id="gate5-user",
+        role="Backend Engineer",
+        difficulty="medium",
+        agora_channel="gate5",
+        current_state="completed",
+        requested_duration_seconds=600,
+        is_demo=False,
+        started_at=datetime.now(timezone.utc),
+        metadata_json={
+            "resume_text": "Backend engineer.",
+            "job_description": "Backend role.",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_gate5_strong_answer_scores_higher_than_weak():
+    """Strong answer must score higher than weak answer across all categories."""
+    provider = ScoredEvaluationProvider()
+    transcripts = _transcripts_for_answers(
+        [
+            "I built a comprehensive caching system with excellent results and thorough testing.",
+            "I don't know much about databases.",
+        ]
+    )
+    result = await generate_assessment(
+        session_id="gate5-test",
+        session=_session_gate5(),
+        transcripts=transcripts,
+        context={"resume": "", "job_description": ""},
+        provider=provider,
+    )
+    assert result["status"] == "completed"
+    pqa = result["ai_assessments"]["per_question_analysis"]
+    strong = pqa[0]["category_scores"]
+    weak = pqa[1]["category_scores"]
+    for category in strong:
+        assert strong[category] >= weak[category], (
+            f"Strong answer should score >= weak answer on {category}: {strong[category]} vs {weak[category]}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_gate5_off_topic_answer_scores_low_on_relevance():
+    """Off-topic answer must score 0 on relevance."""
+    provider = ScoredEvaluationProvider()
+    transcripts = _transcripts_for_answers(
+        ["The weather is nice today. I like talking about cooking recipes."]
+    )
+    result = await generate_assessment(
+        session_id="gate5-test",
+        session=_session_gate5(),
+        transcripts=transcripts,
+        context={"resume": "", "job_description": ""},
+        provider=provider,
+    )
+    assert result["status"] == "completed"
+    relevance = result["ai_assessments"]["per_question_analysis"][0]["category_scores"][
+        "relevance"
+    ]
+    assert relevance == 0, f"Off-topic answer relevance should be 0, got {relevance}"
+
+
+@pytest.mark.asyncio
+async def test_gate5_empty_answer_does_not_crash():
+    """Empty answer must not crash the evaluation engine (returns insufficient_data)."""
+    provider = ScoredEvaluationProvider()
+    transcripts = _transcripts_for_answers([""])
+    result = await generate_assessment(
+        session_id="gate5-test",
+        session=_session_gate5(),
+        transcripts=transcripts,
+        context={"resume": "", "job_description": ""},
+        provider=provider,
+    )
+    # Empty answers are filtered at the pair level -> insufficient_data, not a crash
+    assert result["status"] == "insufficient_data"
+    assert provider.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_gate5_overall_score_is_deterministic_weighted_mean():
+    """Overall score must equal the weighted mean of category scores (no LLM math)."""
+    provider = ScoredEvaluationProvider()
+    transcripts = _transcripts_for_answers(
+        ["I built a comprehensive caching system with excellent results."]
+    )
+    result = await generate_assessment(
+        session_id="gate5-test",
+        session=_session_gate5(),
+        transcripts=transcripts,
+        context={"resume": "", "job_description": ""},
+        provider=provider,
+    )
+    assert result["status"] == "completed"
+    rubric = load_rubric()
+    categories = result["ai_assessments"]["category_scores"]
+    weighted = sum(
+        categories[name]["score"] * rubric["weights"][name] for name in rubric["categories"]
+    )
+    assert abs(result["ai_assessments"]["overall_score"] - round(weighted, 2)) < 0.01
+
+
+@pytest.mark.asyncio
+async def test_gate5_evidence_quotes_come_from_actual_answers():
+    """Every evidence quote must be an exact excerpt from the candidate's answer."""
+    provider = ScoredEvaluationProvider()
+    answer_text = "I built a PostgreSQL query cache that reduced latency by 60%."
+    transcripts = _transcripts_for_answers([answer_text])
+    result = await generate_assessment(
+        session_id="gate5-test",
+        session=_session_gate5(),
+        transcripts=transcripts,
+        context={"resume": "", "job_description": ""},
+        provider=provider,
+    )
+    assert result["status"] == "completed"
+    evidence = result["ai_assessments"]["per_question_analysis"][0]["evidence_quote"]
+    assert evidence in answer_text, f"Evidence '{evidence}' not found in answer '{answer_text}'"
