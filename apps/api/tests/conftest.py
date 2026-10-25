@@ -13,6 +13,8 @@ os.environ["APP_ENV"] = "development"
 os.environ["DEMO_MODE"] = "true"
 os.environ["LLM_PROVIDER"] = "auto"
 os.environ["GROQ_API_KEY"] = "test-only-groq-placeholder-not-a-secret"
+os.environ["STT_PROVIDER"] = "browser"
+os.environ["DEEPGRAM_API_KEY"] = ""
 _test_database_dir = tempfile.TemporaryDirectory(prefix="voicehire-tests-")
 _test_database_path = Path(_test_database_dir.name) / "voicehire.db"
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_database_path.as_posix()}"
