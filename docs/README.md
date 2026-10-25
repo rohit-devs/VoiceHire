@@ -4,8 +4,7 @@ This directory contains all project documentation, organized by topic.
 
 ## docs/setup — Local development & setup
 
-- [SETUP_GUIDE.md](./setup/SETUP_GUIDE.md) — Windows PowerShell and Linux/macOS setup, requirements, native and Compose workflows.
-- [DEVELOPMENT.md](./setup/DEVELOPMENT.md) — Development commands and quality checks.
+- [SETUP_GUIDE.md](./setup/SETUP_GUIDE.md) — Windows PowerShell and Linux/macOS setup, requirements, native and Compose workflows (includes the development-command quick reference formerly in DEVELOPMENT.md).
 
 ## docs/operations — Deployment & operations
 
