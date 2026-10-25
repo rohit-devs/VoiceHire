@@ -93,22 +93,15 @@ async def get_current_user(
     FastAPI dependency that resolves the guest identity and returns a user dict.
 
     Resolution order:
-      1. `vh_guest_id` cookie (Secure, HttpOnly, SameSite=Strict)
-      2. `X-Guest-Id` header (UUID v4, strictly validated)
+      1. `X-Guest-Id` header (UUID v4, strictly validated) — authoritative
+      2. `vh_guest_id` cookie (Secure, HttpOnly, SameSite=Strict) — fallback
       3. Backend-generated UUID — set as a Secure cookie on the response
 
     Never trusts a user ID supplied in a request body. All interview, session,
     transcript, WebSocket, evaluation, coaching-plan, and report routes resolve
     the guest identity here and enforce ownership server-side.
     """
-    # ── 1. Guest cookie ─────────────────────────────────────────────────────
-    cookie_guest_id = request.cookies.get(_GUEST_COOKIE_NAME)
-    if cookie_guest_id and _is_valid_uuid_v4(cookie_guest_id):
-        user = await _upsert_guest_user(cookie_guest_id, db)
-        logger.info("Authenticated guest: %s (cookie)", user["id"])
-        return user
-
-    # ── 2. X-Guest-Id header ────────────────────────────────────────────────
+    # ── 1. X-Guest-Id header (authoritative client identity) ──────────────────
     header_guest_id = request.headers.get("x-guest-id")
     if header_guest_id:
         if not _is_valid_uuid_v4(header_guest_id):
@@ -116,7 +109,8 @@ async def get_current_user(
                 status_code=400, detail="X-Guest-Id must be a valid UUID v4"
             )
         user = await _upsert_guest_user(header_guest_id, db)
-        # Also set the cookie so future requests use the cookie path.
+        # Sync the cookie to the header so a stale Secure cookie cannot
+        # override the frontend's localStorage-driven guest ID on HTTPS.
         response.set_cookie(
             key=_GUEST_COOKIE_NAME,
             value=header_guest_id,
@@ -127,6 +121,13 @@ async def get_current_user(
             path="/",
         )
         logger.info("Authenticated guest: %s (X-Guest-Id header)", user["id"])
+        return user
+
+    # ── 2. Guest cookie (Secure, HttpOnly, SameSite=Strict) ──────────────────
+    cookie_guest_id = request.cookies.get(_GUEST_COOKIE_NAME)
+    if cookie_guest_id and _is_valid_uuid_v4(cookie_guest_id):
+        user = await _upsert_guest_user(cookie_guest_id, db)
+        logger.info("Authenticated guest: %s (cookie)", user["id"])
         return user
 
     # ── 3. Backend-generated guest ──────────────────────────────────────────
