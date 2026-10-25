@@ -32,6 +32,7 @@ def _clear(monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(settings, "LLM_PROVIDER", "auto")
+    monkeypatch.setattr(settings, "STT_PROVIDER", "auto")
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     monkeypatch.setattr(settings, "DEEPGRAM_API_KEY", "")
     monkeypatch.setattr(settings, "DEMO_MODE", False)
