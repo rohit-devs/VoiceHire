@@ -480,8 +480,8 @@ export default function LiveInterviewPage() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
+      <div className="h-screen w-full bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -490,22 +490,22 @@ export default function LiveInterviewPage() {
   const currentQuestion = { q: aiQuestion || "Waiting for the AI interviewer...", category: "Live session" };
 
   return (
-    <div className="h-screen w-full bg-[#0a0a0f] flex flex-col overflow-hidden">
+    <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="min-h-12 border-b border-white/[0.08] bg-[#0a0a0f] flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 flex-shrink-0">
+      <header className="min-h-12 border-b border-border bg-background flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
           <span className="text-[13px] font-semibold text-white">Live Interview</span>
           {isDemo && (
-            <span className="text-[10px] font-semibold text-amber-200 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+            <span className="text-[10px] font-semibold text-warning bg-warning/10 px-2 py-0.5 rounded border border-warning/20">
               Simulated demo
             </span>
           )}
-          <span className="text-[11px] text-muted-foreground px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
+          <span className="text-[11px] text-muted-foreground px-2 py-0.5 rounded bg-input/5 border border-border">
             <span className="capitalize">{interviewType}</span>
           </span>
           {wsConnected && (
-            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Live</span>
+            <span className="text-[10px] text-success bg-success/10 px-1.5 py-0.5 rounded">Live</span>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -517,8 +517,8 @@ export default function LiveInterviewPage() {
             }
             className={`text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
               useRealVoice
-                ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
-                : "bg-white/5 text-slate-400 border-white/10"
+                ? "bg-primary/20 text-primary border-primary/30"
+                : "bg-input/5 text-muted-foreground border-input/10"
             }`}
           >
             {useRealVoice ? "Voice mode: On" : "Voice mode: Off"}
@@ -538,7 +538,7 @@ export default function LiveInterviewPage() {
       {/* Main 3-Column Layout */}
       <div className="flex-1 flex flex-col overflow-hidden lg:flex-row">
         {/* Left Column - Session Info */}
-        <div className="w-48 border-r border-white/[0.08] bg-[#0a0a0f] p-4 flex-col hidden md:flex">
+        <div className="w-48 border-r border-border bg-background p-4 flex-col hidden md:flex">
           <div className="space-y-4">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
@@ -554,7 +554,7 @@ export default function LiveInterviewPage() {
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
                 Category
               </p>
-              <span className="text-xs text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2 py-1 rounded-md inline-block capitalize">
+              <span className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded-md inline-block capitalize">
                 {currentQuestion?.category}
               </span>
             </div>
@@ -576,7 +576,7 @@ export default function LiveInterviewPage() {
                     <span className="text-[11px] text-muted-foreground">Optional RTC</span>
                     <span
                       className={`text-[11px] ${
-                        agoraState === "connected" ? "text-emerald-400" : "text-muted-foreground"
+                        agoraState === "connected" ? "text-success" : "text-muted-foreground"
                       }`}
                     >
                       {agoraState === "connected" ? "connected" : "not required"}
@@ -585,7 +585,7 @@ export default function LiveInterviewPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] text-muted-foreground">WebSocket</span>
                     <span
-                      className={`text-[11px] ${wsConnected ? "text-emerald-400" : "text-amber-400"}`}
+                      className={`text-[11px] ${wsConnected ? "text-success" : "text-warning"}`}
                     >
                       {wsConnecting ? "Connecting..." : wsConnected ? "Live" : "Off"}
                     </span>
@@ -610,7 +610,7 @@ export default function LiveInterviewPage() {
                   key={transcript.id}
                   className={`rounded-md px-2 py-1.5 text-[11px] transition-all ${
                     i === interviewerQuestions.length - 1
-                      ? "bg-violet-500/10 border border-violet-500/20 text-violet-300"
+                      ? "bg-primary/10 border border-primary/20 text-primary"
                       : "text-muted-foreground"
                   }`}
                 >
@@ -644,12 +644,12 @@ export default function LiveInterviewPage() {
                         aria-live="polite"
                         className={`rounded-full px-2 py-1 text-xs font-semibold ${
                           orbState === "speaking"
-                            ? "bg-violet-500/15 text-violet-200"
+                            ? "bg-primary/15 text-primary"
                             : orbState === "listening"
                               ? "bg-blue-500/15 text-blue-200"
                               : orbState === "thinking"
-                                ? "bg-amber-500/15 text-amber-100"
-                                : "bg-white/10 text-slate-200"
+                                ? "bg-warning/15 text-warning"
+                                : "bg-background/10 text-secondary"
                         }`}
                       >
                         {orbState === "speaking"
@@ -665,7 +665,7 @@ export default function LiveInterviewPage() {
                     </div>
                     <p className="text-[15px] text-white leading-relaxed">{currentQuestion?.q}</p>
                     {useRealVoice && (
-                      <p className="mt-3 text-[11px] text-slate-400">
+                      <p className="mt-3 text-[11px] text-muted-foreground">
                         {speechSupported
                           ? "Streaming speech with browser fallback · Local speech playback · Agora optional"
                           : "Voice recognition is unavailable. You can continue with text input."}
@@ -674,7 +674,7 @@ export default function LiveInterviewPage() {
                     {!secureContext && (
                       <p
                         role="status"
-                        className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm leading-relaxed text-amber-100"
+                        className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm leading-relaxed text-warning"
                       >
                         Microphone needs HTTPS or localhost. Continue by typing your answer below.
                       </p>
@@ -685,26 +685,26 @@ export default function LiveInterviewPage() {
 
               {/* User Response Card */}
               {transcripts.filter((t) => t.speaker === "candidate").length > 0 && (
-                <Card className="border-emerald-500/20 bg-emerald-500/[0.03] p-5">
+                <Card className="border-success/20 bg-success/[0.03] p-5">
                   <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                    <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-success to-success flex items-center justify-center">
                       <span className="text-xs font-bold text-white">You</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-semibold text-emerald-300">You</span>
-                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                        <span className="text-xs font-semibold text-success">You</span>
+                        <span className="text-[10px] text-success bg-success/10 px-1.5 py-0.5 rounded">
                           Speaking
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mb-2">
                         {agoraState === "connected" && audioLevel > 0 && (
-                          <span className="text-[10px] text-emerald-300">
+                          <span className="text-[10px] text-success">
                             Microphone level {Math.round(audioLevel)}%
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-emerald-100 leading-relaxed">
+                      <p className="text-sm text-success leading-relaxed">
                         {transcripts.filter((t) => t.speaker === "candidate").pop()?.text}
                       </p>
                     </div>
@@ -725,7 +725,7 @@ export default function LiveInterviewPage() {
                           setSpeechVoiceURI(voiceURI);
                           speechSynthesisRef.current?.setVoice(voiceURI);
                         }}
-                        className="min-h-10 rounded-md border border-white/10 bg-[#141414] px-2 text-foreground"
+                        className="min-h-10 rounded-md border border-input/10 bg-input px-2 text-foreground"
                       >
                         <option value="">System default</option>
                         {getUniqueSpeechVoices(speechVoices).map((voice) => (
@@ -763,7 +763,7 @@ export default function LiveInterviewPage() {
                   <Button
                     onClick={startInterview}
                     disabled={agoraState === "connecting" || agoraState === "requesting-permission"}
-                    className="rounded-xl px-6 py-2.5 shadow-lg shadow-violet-500/25"
+                    className="rounded-xl px-6 py-2.5 shadow-lg shadow-primary/25"
                   >
                     {agoraState === "connecting" || agoraState === "requesting-permission" ? (
                       <>
@@ -787,12 +787,12 @@ export default function LiveInterviewPage() {
                       placeholder="Type your answer"
                       rows={2}
                       aria-label="Type your answer"
-                      className="max-w-md bg-white/5"
+                      className="bg-input/5"
                     />
                     <Button
                       onClick={() => void submitAnswer()}
                       disabled={!answerText.trim() || orbState === "thinking"}
-                      className="bg-emerald-700 text-white hover:bg-emerald-600"
+                      className="bg-success text-foreground hover:bg-success"
                     >
                       Submit Answer
                     </Button>
@@ -805,7 +805,7 @@ export default function LiveInterviewPage() {
                           }
                         }}
                         aria-label="Done answering"
-                        className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm text-violet-200 hover:bg-violet-500/20"
+                        className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary hover:bg-primary/20"
                       >
                         Done Answering
                       </button>
@@ -814,7 +814,7 @@ export default function LiveInterviewPage() {
                       <button
                         onClick={() => void (isMuted ? unmuteAgora() : muteAgora())}
                         aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                        className="rounded-lg border border-input/10 bg-input/5 px-3 py-2 text-sm text-white"
                       >
                         {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                       </button>
@@ -825,7 +825,7 @@ export default function LiveInterviewPage() {
 
               {/* Error display */}
               {actionError && (
-                <div role="alert" className="text-xs text-rose-400 text-center">
+                <div role="alert" className="text-xs text-error text-center">
                   {actionError}
                   {lastSubmittedAnswer && (
                     <button onClick={retryQuestionGeneration} className="ml-2 underline">
@@ -842,9 +842,9 @@ export default function LiveInterviewPage() {
                 </div>
               )}
               {(speechError || (!speechSupported && isInterviewStarted)) && (
-                <div role="status" className="text-xs text-amber-300 text-center">
+                <div role="status" className="text-xs text-warning text-center">
                   {speechError || "Browser speech recognition is unsupported; use text input."}
-                  <p className="mt-1 text-slate-400">Your interview remains available in text mode.</p>
+                  <p className="mt-1 text-muted-foreground">Your interview remains available in text mode.</p>
                 </div>
               )}
             </div>
@@ -852,14 +852,14 @@ export default function LiveInterviewPage() {
 
           {/* Bottom Metrics */}
           {isInterviewStarted && (
-            <div className="grid grid-cols-2 gap-3 border-t border-white/[0.08] bg-[#0a0a0f] p-4 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 border-t border-border bg-background p-4 sm:grid-cols-3 lg:grid-cols-6">
               <MetricItem label="Speaking time" metric={getMetric(metrics, "speaking_duration_seconds")} />
               <MetricItem label="Words per minute" metric={getMetric(metrics, "words_per_minute")} />
               <MetricItem label="Filler rate" metric={getMetric(metrics, "filler_word_rate")} />
               <MetricItem label="Average answer" metric={getMetric(metrics, "answer_length_words")} />
               <MetricItem label="Time remaining" metric={getMetric(metrics, "time_remaining_seconds")} />
-              <div className="flex min-w-0 flex-col justify-center rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-                <span className="text-xs font-medium text-slate-300">Interview progress</span>
+              <div className="flex min-w-0 flex-col justify-center rounded-lg border border-input/10 bg-background/5 px-3 py-2">
+                <span className="text-xs font-medium text-secondary">Interview progress</span>
                 <span className="mt-1 text-sm font-semibold text-white">
                   {interviewerQuestions.length} questions asked
                 </span>
@@ -869,15 +869,15 @@ export default function LiveInterviewPage() {
         </div>
 
         {/* Right Column - Transcript */}
-        <div className="h-52 w-full shrink-0 border-t border-white/[0.08] bg-[#0a0a0f] flex flex-col lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
-          <div className="p-4 border-b border-white/[0.08] flex items-center justify-between">
+        <div className="h-52 w-full shrink-0 border-t border-border bg-background flex flex-col lg:h-auto lg:w-80 lg:border-l lg:border-t-0">
+          <div className="p-4 border-b border-border flex items-center justify-between">
             <h3 className="text-[13px] font-semibold text-white">Live Transcript</h3>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox"
                 checked={autoScroll}
                 onChange={(event) => setAutoScroll(event.target.checked)}
-                className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/20"
+                className="rounded border-input/20 bg-input/5 text-primary focus:ring-primary/20"
               />
               <span className="text-[11px] text-muted-foreground">Auto-scroll</span>
             </label>
@@ -899,14 +899,14 @@ export default function LiveInterviewPage() {
                 key={t.id}
                 className={`rounded-lg p-3 text-sm ${
                   t.speaker === "candidate"
-                    ? "bg-emerald-500/10 border border-emerald-500/20 ml-2"
-                    : "bg-violet-500/10 border border-violet-500/20 mr-2"
+                    ? "bg-success/10 border border-success/20 ml-2"
+                    : "bg-primary/10 border border-primary/20 mr-2"
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span
                     className={`text-[11px] font-medium ${
-                      t.speaker === "candidate" ? "text-emerald-400" : "text-violet-400"
+                      t.speaker === "candidate" ? "text-success" : "text-primary"
                     }`}
                   >
                     {t.speaker === "candidate" ? "You" : "AI Interviewer"}
@@ -915,7 +915,7 @@ export default function LiveInterviewPage() {
                     {formatTimestamp(t.timestamp)}
                   </span>
                 </div>
-                <p className="text-[13px] text-slate-200 leading-relaxed">{t.text}</p>
+                <p className="text-[13px] text-secondary leading-relaxed">{t.text}</p>
               </div>
             ))}
             <div ref={transcriptEndRef} />
