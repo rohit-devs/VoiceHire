@@ -31,15 +31,20 @@ export function VoiceOrb({
 }: VoiceOrbProps) {
   const isError = state === "permission-denied" || state === "failed";
   const candidateSpeaking = connected && audioLevel > 8;
+  const isListening = candidateSpeaking || state === "listening" || state === "user-speaking";
+  const isSpeaking = state === "speaking" || state === "thinking";
+  const isConnecting = state === "connecting" || state === "reconnecting" || state === "requesting-permission";
+
   const color = isError
-    ? { core: "#ef4444", glow: "#f87171" }
-    : state === "speaking" || state === "thinking"
-      ? { core: "#6366f1", glow: "#818cf8" }
-      : candidateSpeaking || state === "user-speaking"
-        ? { core: "#10b981", glow: "#34d399" }
-        : connected
+    ? { core: "var(--error)", glow: "var(--error)" }
+    : isSpeaking
+      ? { core: "var(--success)", glow: "var(--success)" }
+      : isListening
+        ? { core: "var(--accent)", glow: "var(--accent)" }
+        : isConnecting
           ? { core: "#3b82f6", glow: "#60a5fa" }
-          : { core: "#6b7280", glow: "#9ca3af" };
+          : { core: "var(--text-muted)", glow: "var(--text-muted)" };
+
   const radius = size / 2;
   const scale = 1 + (connected ? Math.max(0, Math.min(audioLevel, 100)) / 1000 : 0);
   const status = isError
@@ -48,9 +53,11 @@ export function VoiceOrb({
       ? candidateSpeaking ? "Candidate speaking" : "Microphone connected"
       : state.replace(/-/g, " ");
 
+  const animationClass = isListening ? "animate-pulse-glow" : isSpeaking ? "animate-float" : "";
+
   return (
     <div
-      className={`relative flex items-center justify-center ${className}`}
+      className={`relative flex items-center justify-center ${animationClass} ${className}`}
       style={{ width: size, height: size }}
       role="img"
       aria-label={status}
