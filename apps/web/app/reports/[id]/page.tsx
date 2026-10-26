@@ -14,11 +14,11 @@ function MetricCard({ label, metric }: {
 }) {
   return (
     <Card className="p-4">
-      <h3 className="text-sm font-medium text-white">{label}</h3>
+      <h3 className="text-sm font-medium text-foreground">{label}</h3>
       {metric.value === null ? (
         <p className="mt-2 text-sm text-muted-foreground">{metric.reason || "Insufficient data."}</p>
       ) : (
-        <p className="mt-2 text-xl font-semibold text-white">
+        <p className="mt-2 text-xl font-semibold text-foreground">
           {metric.value} <span className="text-sm font-normal text-muted-foreground">{metric.unit}</span>
         </p>
       )}
@@ -97,14 +97,14 @@ export default function ReportPage() {
 
   return (
     <AppShell>
-      <main className="min-h-screen bg-[#0a0a0f] px-4 py-8 sm:px-6 sm:py-12">
+      <main className="min-h-screen bg-background px-4 py-8 sm:px-6 sm:py-12">
         <section className="mx-auto max-w-5xl space-y-7">
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
-            <h1 className="text-3xl font-bold text-white">
+            <h1 className="text-3xl font-bold text-foreground">
               Interview evaluation
               {report?.provider === "demo" && (
-                <span className="text-[10px] font-semibold text-amber-200 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 ml-2">
+                <span className="text-[10px] font-semibold text-warning bg-warning/10 px-2 py-0.5 rounded border border-warning/20 ml-2">
                   Demo / Simulated
                 </span>
               )}
@@ -127,33 +127,33 @@ export default function ReportPage() {
               <p className="text-sm text-muted-foreground">Loading persisted report…</p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }, (_, index) => (
-                  <div key={index} className="h-24 animate-pulse rounded-xl border border-white/10 bg-white/[0.03]" />
+                  <div key={index} className="h-24 animate-pulse rounded-xl border border-border bg-background/5" />
                 ))}
               </div>
             </div>
           ) : error ? (
             <Card className="space-y-4 p-5">
-              <p role="alert" className="text-sm text-rose-200">{error}</p>
+              <p role="alert" className="text-sm text-error">{error}</p>
               <Button onClick={() => void loadReport()}>Retry loading report</Button>
             </Card>
           ) : report?.status === "failed" ? (
             <Card className="space-y-4 p-5">
-              <p role="alert" className="text-sm text-amber-100">
+              <p role="alert" className="text-sm text-warning">
                 Evaluation failed: {report.error || "No assessment was stored."}
               </p>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-secondary">
                 This report is persisted and idempotent; a new evaluation cannot be generated for this same session.
               </p>
               <ButtonLink href="/interview/new">Start a new interview</ButtonLink>
             </Card>
           ) : report?.status === "processing" ? (
-            <Card role="status" className="p-5 text-sm text-slate-200">Evaluation is still processing. Refresh this report to check again.</Card>
+            <Card role="status" className="p-5 text-sm text-secondary">Evaluation is still processing. Refresh this report to check again.</Card>
           ) : report ? (
             <>
               <p className="text-xs text-muted-foreground">Rubric version {report.rubric_version}</p>
               <section aria-labelledby="measured-heading" className="space-y-4">
                 <div>
-                  <h2 id="measured-heading" className="text-xl font-semibold text-white">
+                  <h2 id="measured-heading" className="text-xl font-semibold text-foreground">
                     Measured metrics
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -170,7 +170,7 @@ export default function ReportPage() {
                 </div>
                 {report.measured_metrics.answer_lengths_by_question.value && (
                   <Card className="p-4">
-                    <h3 className="text-sm font-medium text-white">Answer length by question</h3>
+                    <h3 className="text-sm font-medium text-foreground">Answer length by question</h3>
                     <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                       {report.measured_metrics.answer_lengths_by_question.value.map((answer) => (
                         <li key={answer.question_id}>Question {answer.question_id}: {answer.words} words</li>
@@ -183,22 +183,22 @@ export default function ReportPage() {
               {report.ai_assessments ? (
                 <section aria-labelledby="ai-heading" className="space-y-5">
                   <div>
-                    <h2 id="ai-heading" className="text-xl font-semibold text-white">
+                    <h2 id="ai-heading" className="text-xl font-semibold text-foreground">
                       {report.provider === "demo" ? "Demo evaluation" : "AI judgments"}
                     </h2>
-                    <p className="mt-1 text-sm text-amber-200">{report.guidance_note}</p>
+                    <p className="mt-1 text-sm text-warning">{report.guidance_note}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Generated by {report.provider ?? "an unreported provider"}
                       {report.model ? ` · ${report.model}` : ""}
                     </p>
                   </div>
-                  <Card className="border-violet-400/20 bg-violet-400/[0.05] p-5 sm:p-6">
-                    <p className="text-sm font-medium text-slate-200">Score summary ·
+                  <Card className="border-primary/20 bg-primary/[0.05] p-5 sm:p-6">
+                    <p className="text-sm font-medium text-secondary">Score summary ·
                     {report.provider === "demo" ? "Demo heuristic" : "AI judgment"} · 0–5</p>
-                    <p className="mt-2 text-4xl font-bold tabular-nums text-white">
-                      {report.ai_assessments.overall_score.toFixed(2)} <span className="text-2xl text-slate-300">/ 5</span>
+                    <p className="mt-2 text-4xl font-bold tabular-nums text-foreground">
+                      {report.ai_assessments.overall_score.toFixed(2)} <span className="text-2xl text-secondary">/ 5</span>
                     </p>
-                    <p className="mt-2 text-sm text-slate-300">
+                    <p className="mt-2 text-sm text-secondary">
                       {report.provider === "demo"
                         ? "Heuristic score from the simulated demo evaluation."
                         : "Weighted rubric score from the persisted assessment."}
@@ -206,9 +206,9 @@ export default function ReportPage() {
                   </Card>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {Object.entries(report.ai_assessments.category_scores).map(([category, assessment]) => (
-                      <article key={category} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                        <h3 className="font-medium capitalize text-white">{category.replace(/_/g, " ")}</h3>
-                        <p className="mt-1 text-sm text-violet-200">
+                      <article key={category} className="rounded-xl border border-border bg-background/5 p-4">
+                        <h3 className="font-medium capitalize text-foreground">{category.replace(/_/g, " ")}</h3>
+                        <p className="mt-1 text-sm text-primary">
                           {assessment.score} / 5 ·
                           {report.provider === "demo" ? "Demo heuristic" : "AI judgment"}
                         </p>
@@ -217,17 +217,17 @@ export default function ReportPage() {
                     ))}
                   </div>
                   <div className="space-y-3">
-                    <h3 className="text-lg font-semibold text-white">Per-question evidence</h3>
+                    <h3 className="text-lg font-semibold text-foreground">Per-question evidence</h3>
                     {report.ai_assessments.per_question_analysis.map((item, index) => (
-                      <article key={item.question_id} className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-5">
-                        <h4 className="font-medium text-white">{item.question}</h4>
-                        <div className="rounded-lg border border-white/10 bg-black/10 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Saved candidate answer</p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">
+                      <article key={item.question_id} className="space-y-3 rounded-xl border border-border bg-background/5 p-5">
+                        <h4 className="font-medium text-foreground">{item.question}</h4>
+                        <div className="rounded-lg border border-border bg-black/10 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Saved candidate answer</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-secondary">
                             {transcript.filter((entry) => entry.speaker === "candidate")[index]?.text ?? "No matching saved answer is available."}
                           </p>
                         </div>
-                        <blockquote className="border-l-2 border-violet-400 pl-3 text-sm text-violet-100">
+                        <blockquote className="border-l-2 border-primary pl-3 text-sm text-primary">
                           “{item.evidence_quote}”
                         </blockquote>
                         <p className="text-sm text-muted-foreground">{item.rationale}</p>
@@ -236,34 +236,34 @@ export default function ReportPage() {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <Card className="p-5">
-                      <h3 className="font-semibold text-white">Strengths</h3>
+                      <h3 className="font-semibold text-foreground">Strengths</h3>
                       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
                         {report.ai_assessments.strengths.map((item) => <li key={item}>{item}</li>)}
                       </ul>
                     </Card>
                     <Card className="p-5">
-                      <h3 className="font-semibold text-white">Weaknesses and areas to work on</h3>
+                      <h3 className="font-semibold text-foreground">Weaknesses and areas to work on</h3>
                       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
                         {report.ai_assessments.missing_elements.map((item) => <li key={item}>{item}</li>)}
                       </ul>
                     </Card>
                   </div>
                   <Card className="p-5">
-                    <h3 className="font-semibold text-white">Improved-answer structure</h3>
+                    <h3 className="font-semibold text-foreground">Improved-answer structure</h3>
                     <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
                       {report.ai_assessments.improved_answer_structure.map((item) => <li key={item}>{item}</li>)}
                     </ol>
                   </Card>
                   <section aria-labelledby="coaching-heading" className="space-y-4">
                     <div>
-                      <h3 id="coaching-heading" className="text-xl font-semibold text-white">
+                      <h3 id="coaching-heading" className="text-xl font-semibold text-foreground">
                         {report.provider === "demo" ? "Demo coaching plan" : "7-day coaching plan"}
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Saved practice tasks are shown on their assigned days. Days without a persisted task are left intentionally blank.
                       </p>
                     </div>
-                    {progressError && <p role="alert" className="text-sm text-amber-200">{progressError}</p>}
+                    {progressError && <p role="alert" className="text-sm text-warning">{progressError}</p>}
                     {coachingPlan ? (
                       <ol className="grid gap-3 md:grid-cols-2">
                         {Array.from({ length: 7 }, (_, index) => {
@@ -278,17 +278,17 @@ export default function ReportPage() {
                                     aria-label={`Mark day ${dayNumber}: ${day.title} complete`}
                                     checked={checkedDays.has(dayNumber)}
                                     onChange={(event) => void updateDay(dayNumber, event.target.checked)}
-                                    className="mt-1 h-4 w-4 accent-violet-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
+                                    className="mt-1 h-4 w-4 accent-primary focus-visible:outline focus-visible:outline-2"
                                   />
                                   <div className="min-w-0">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-200">Day {dayNumber} · {day.duration}</p>
-                                    <h4 className="mt-1 font-semibold text-white">{day.title}</h4>
-                                    <p className="mt-2 text-sm leading-relaxed text-slate-300">{day.description}</p>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Day {dayNumber} · {day.duration}</p>
+                                    <h4 className="mt-1 font-semibold text-foreground">{day.title}</h4>
+                                    <p className="mt-2 text-sm leading-relaxed text-secondary">{day.description}</p>
                                   </div>
                                 </Card>
                               ) : (
                                 <Card className="h-full p-4">
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Day {dayNumber}</p>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Day {dayNumber}</p>
                                   <p className="mt-2 text-sm text-muted-foreground">No practice task was returned for this day.</p>
                                 </Card>
                               )}
