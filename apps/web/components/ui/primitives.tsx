@@ -12,7 +12,7 @@ type ButtonVariant = "primary" | "secondary" | "danger";
 const buttonStyles = (variant: ButtonVariant, className?: string) =>
   cn(
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60",
-    variant === "primary" && "bg-primary text-primary-foreground hover:brightness-110",
+    variant === "primary" && "bg-primary text-primary-foreground hover:bg-accent-hover hover:text-primary-foreground",
     variant === "secondary" && "border border-border bg-card text-card-foreground hover:bg-surface-raised",
     variant === "danger" && "border border-error/30 bg-error/10 text-error hover:bg-error/20",
     className,

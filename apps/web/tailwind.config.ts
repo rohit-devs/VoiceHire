@@ -30,6 +30,7 @@ const config: Config = {
           DEFAULT: 'var(--accent)',
           foreground: 'var(--accent-foreground)',
         },
+        'accent-hover': 'var(--accent-hover)',
         destructive: {
           DEFAULT: 'var(--destructive)',
           foreground: 'var(--destructive-foreground)',

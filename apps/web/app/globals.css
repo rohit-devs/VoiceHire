@@ -4,31 +4,46 @@
 
 @layer base {
   :root {
-    --background: #10100f;
-    --foreground: #e7e5e0;
-    --card: #181817;
-    --card-foreground: #e7e5e0;
-    --primary: #e8321e;
+    --bg-base: #0a0a0a;
+    --bg-elevated: #0d0d0d;
+    --bg-input: #141414;
+    --border: #262626;
+    --border-hover: #e8321e;
+    --accent: #e8321e;
+    --accent-hover: #ff3b2d;
+    --text-primary: #e5e5e5;
+    --text-secondary: #a3a3a3;
+    --text-muted: #737373;
+    --success: #34d399;
+    --error: #f87171;
+    --warning: #fbbf24;
+    --ring: #e8321e;
+    --radius: 0.75rem;
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --space-2xl: 3rem;
+    --duration-fast: 150ms;
+    --duration-base: 300ms;
+    --duration-slow: 500ms;
+
+    /* shadcn-compatible aliases for Tailwind mapping */
+    --background: var(--bg-base);
+    --foreground: var(--text-primary);
+    --card: var(--bg-elevated);
+    --card-foreground: var(--text-primary);
+    --primary: var(--accent);
     --primary-foreground: #050505;
     --secondary: #20201e;
-    --secondary-foreground: #e7e5e0;
+    --secondary-foreground: var(--text-secondary);
     --muted: #20201e;
-    --muted-foreground: #aaa8a1;
-    --accent: #3a1b17;
-    --accent-foreground: #e7e5e0;
-    --destructive: #f0786d;
-    --destructive-foreground: #10100f;
-    --border: #343431;
-    --input: #343431;
-    --ring: #e8321e;
-    --text-primary: #e7e5e0;
-    --text-secondary: #aaa8a1;
-    --text-muted: #85837d;
+    --muted-foreground: var(--text-muted);
+    --destructive: var(--error);
+    --destructive-foreground: #050505;
+    --input: var(--bg-input);
     --surface-raised: #20201e;
-    --success: #75c79a;
-    --warning: #e6b86a;
-    --error: #f0786d;
-    --radius: 0.75rem;
   }
 }
 
