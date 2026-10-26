@@ -53,98 +53,149 @@
 
 /* Body */
 font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+```
+
+### Usage Rules
+- Body uses the system UI font stack.
+- Display font (Impact stack, uppercase, tight leading) for headlines only.
+- Label style (0.28em tracking, uppercase, 12px, bold) for small labels.
+
+---
 
 ## 3. Spacing
 
-Use the Tailwind spacing scale exclusively. Do not use arbitrary pixel values.
-
-| Token | Tailwind | Use |
+| Token | Value | Use |
 |---|---|---|
-| `--space-xs` | `space-x-1` / `gap-1` | tight groupings within controls |
-| `--space-sm` | `space-x-2` / `gap-2` | button internal gap |
-| `--space-md` | `space-x-4` / `gap-4` | section components |
-| `--space-lg` | `space-x-6` / `gap-6` | page-level sections |
-| `--space-xl` | `space-x-8` / `gap-8` | major page landmarks |
-| `--space-2xl` | `space-x-12` / `gap-12` | outer page gutters |
+| `--space-xs` | `0.25rem` (4px) | tight inline gaps |
+| `--space-sm` | `0.5rem` (8px) | component internal padding |
+| `--space-md` | `1rem` (16px) | default component padding |
+| `--space-lg` | `1.5rem` (24px) | section spacing |
+| `--space-xl` | `2rem` (32px) | page section margins |
+| `--space-2xl` | `3rem` (48px) | major page sections |
 
-Page containers use `max-w-7xl mx-auto` with `px-4` on mobile, `px-6` at `md`, `px-8` at `lg`.
+- Use Tailwind `space-*`, `gap-*`, `p-*`, `m-*` utilities that map to these values.
+- Never invent arbitrary spacing values outside this scale.
 
-## 4. Buttons
+---
 
-Only the `primary` variant uses accent red (`#e8321e`). All other variants use border/subtle backgrounds.
+## 4. Borders
 
-| Variant | Background | Border | Text | Hover |
+| Token | Hex | Use |
+|---|---|---|
+| `--border` | `#262626` | default borders |
+| `--border-hover` | `#e8321e` | interactive hover border |
+| `--ring` | `#e8321e` | focus ring |
+
+- Borders stay subtle unless interactive.
+- Interactive hover border uses the accent color.
+- Default border width is 1px.
+
+---
+
+## 5. Buttons
+
+### Variants
+
+| Variant | Background | Text | Hover | Use |
 |---|---|---|---|---|
-| `primary` | `#e8321e` | none | `#050505` | `#ff3b2d` |
-| `secondary` | transparent | `border-border` | `text-card-foreground` | `bg-surface-raised` |
-| `danger` | `bg-error/10` | `border border-error/30` | `text-error` | `hover:bg-error/20` |
+| primary | `--accent` `#e8321e` | `#050505` | `--accent-hover` `#ff3b2d` | primary CTAs, key metrics, brand moments |
+| secondary | transparent / `--border` | `--text-primary` | `--surface-raised` | tertiary actions |
+| danger | `--border` with `--error` text | `--error` `#f87171` | `--error` hover | destructive actions |
 
-- Minimum height: `min-h-11` (44px) for touch accessibility
-- Rounded: `rounded-lg`
-- Focus: `focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`
-- Disabled: `disabled:cursor-not-allowed disabled:opacity-60`
-- Red accent is reserved for primary CTAs, key metrics, and brand moments — never for secondary or decorative use.
+### Rules
+- Accent red is reserved for primary CTAs, key metrics, and brand moments. Never use it for borders or secondary text.
+- All buttons: `min-h-11`, `rounded-lg`, `px-4 py-2`, `text-sm font-semibold`, visible focus ring.
+- Focus state: `outline-2 outline-offset-2 outline-ring` (accent color).
 
-## 5. Cards
+---
 
-| Property | Value |
-|---|---|
-| Background | `--bg-elevated` (`#0d0d0d`) |
-| Border | `1px solid --border` (`#262626`) |
-| Radius | `rounded-xl` |
-| Shadow | none (borders define elevation) |
+## 6. Cards
 
-Cards never use pure white backgrounds or decorative gradients.
+| Token | Hex | Use |
+|---|---|---|---|
+| `--bg-elevated` | `#0d0d0d` | cards, modals, elevated surfaces |
+| `--bg-input` | `#141414` | inputs, selects, textareas |
 
-## 6. Inputs
+- Cards: `rounded-xl`, `border border-border`, `bg-card`, `text-card-foreground`.
+- Card padding: `p-6` default, `p-4` compact.
+- Cards never use pure white backgrounds.
 
-| Property | Value |
-|---|---|
-| Background | `--bg-input` (`#141414`) |
-| Border | `1px solid --border` (`#262626`) |
-| Text | `--text-primary` (`#e5e5e5`) |
-| Placeholder | `--text-muted` (`#737373`) |
-| Focus | `focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring` |
+---
 
-Inputs are `min-h-11` (44px) with `px-3 py-2.5` padding. All inputs must have visible labels and `aria-label` or `aria-labelledby`.
+## 7. Inputs
 
-## 7. Focus
+| Token | Hex | Use |
+|---|---|---|---|
+| `--bg-input` | `#141414` | inputs, selects, textareas |
+| `--border` | `#262626` | input borders |
+| `--ring` | `#e8321e` | input focus ring |
 
-- Visible focus indicators are required on every interactive element.
-- Focus ring uses `--ring` (accent red `#e8321e`), 2px, offset 2px.
-- Never remove outlines via `outline: none` or `focus-visible:hidden`.
+- Inputs: `min-h-11`, `w-full`, `rounded-lg`, `border border-input`, `bg-background`, `px-3 py-2.5`, `text-foreground`, `placeholder:text-muted-foreground`.
+- Focus state: `outline-2 outline-offset-2 outline-ring`.
+- Labelled inputs required: every input has an associated `<label>` or `aria-label`.
 
-## 8. Motion
+---
 
-Follow `prefers-reduced-motion`. When reduced motion is requested, all animations and transitions are set to `0.01ms` duration and `iteration-count: 1`.
+## 8. Focus States
 
-Voice Orb states use subtle scale/opacity pulses only — no shimmering or flashing gradients.
+- Visible focus states on all interactive elements.
+- Focus ring: `outline-2 outline-offset-2` using `--ring` color (`#e8321e`).
+- AA contrast required for all text.
+- `aria-live` on the live transcript region.
+- Keyboard-reachable controls.
 
-| State | Animation | Description |
-|---|---|---|
-| `idle` | static or slow float | ready to listen |
-| `listening` | `animate-waveform` | mic active, processing audio |
-| `speaking` | `animate-pulse-glow` | AI talking |
-| `thinking` | subtle pulse | generating response |
+---
 
-## 9. Voice Orb States
+## 9. Motion
 
-The Voice Orb is the primary affordance for interview voice state. It must be obvious at a glance.
+| Token | Value | Use |
+|---|---|---|---|
+| `--duration-fast` | `150ms` | hover, focus |
+| `--duration-base` | `300ms` | transitions, modals |
+| `--duration-slow` | `500ms` | page entries, metric bars |
 
-| State | Visual | Meaning |
-|---|---|---|
-| `idle` | dim orb, static | ready; not listening |
-| `listening` | waveform animation | microphone active |
-| `speaking` | pulse-glow | AI is talking |
-| `thinking` | subtle pulse | generating response |
+- `prefers-reduced-motion: reduce` must disable animations and transitions.
+- No decorative gradients. Animations are functional only (voice-orb states, metric fills).
 
-The Voice Orb is accompanied by live, auto-scrolling transcript with `aria-live="polite"` and readable metrics on mobile. A visible text-input fallback must always be present.
+---
 
-## 10. Accessibility
+## 10. Voice Orb States
 
-- AA contrast minimum for all text (never pure white on dark for large areas)
-- Visible focus states on all interactive elements
-- Labelled inputs (`aria-label`, `aria-labelledby`, or visible `<label>`)
-- `aria-live` on the live transcript region
-- Keyboard-reachable controls
-- Verify at 375px, 768px, and 1440px viewport widths
+| State | Color | Animation | Meaning |
+|---|---|---|---|
+| idle | `--text-muted` `#737373` | static | AI not speaking, not listening |
+| listening | `--accent` `#e8321e` | `pulse-glow` 3s | mic active, capturing audio |
+| speaking | `--success` `#34d399` | `float` 4s | AI is talking |
+
+- VoiceOrb: circular, high contrast, `aria-label` indicating current state.
+- Never use pure white for the orb.
+- State transitions are instant (no cross-fade) to keep the interface serious and focused.
+
+---
+
+## 11. Screen Requirements
+
+### Landing
+- One value proposition, one primary CTA ("Try demo interview"), short how-it-works.
+
+### Interview Live
+- Obvious VoiceOrb states (AI speaking / listening / idle).
+- Live auto-scrolling transcript with `aria-live`.
+- Readable metrics on mobile.
+- Visible text-input fallback.
+
+### Report
+- Score summary, strengths, weaknesses, 7-day coaching plan, retry button.
+- Empty plan days labelled empty for real sessions.
+- Demo sessions show a clearly labelled simulated plan.
+
+### Demo Banner
+- Visible, not intrusive.
+
+---
+
+## 12. Verification
+
+- Verify layouts at **375, 768 and 1440 px**.
+- Store screenshots in `docs/screenshots/`.
+- AA contrast on all text.
