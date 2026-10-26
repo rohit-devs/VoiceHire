@@ -8,23 +8,23 @@ import { ButtonLink, Card } from "@/components/ui/primitives";
 
 function Hero() {
   return (
-    <section className="relative border border-white/[0.08] bg-[#0d0d0d] p-6 sm:p-12 rounded-2xl overflow-hidden">
+    <section className="relative border border-border bg-card p-6 sm:p-12 rounded-2xl overflow-hidden">
       <div className="relative z-10 max-w-5xl mx-auto text-center">
-        <p className="vh-label text-[#e8321e] font-bold uppercase tracking-wider text-xs mb-3">
+        <p className="vh-label text-primary font-bold uppercase tracking-wider text-xs mb-3">
           Deliberate practice. Honest feedback.
         </p>
-        <h1 className="vh-display text-4xl sm:text-6xl font-bold text-white leading-tight mb-6">
+        <h1 className="vh-display text-4xl sm:text-6xl font-bold text-foreground leading-tight mb-6">
           AI-powered mock interviews.
           <span className="block">Built for your target role.</span>
         </h1>
-        <p className="text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto mb-10 leading-relaxed">
+        <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
           Practise spoken interviews tailored to your role, get adaptive follow-up questions,
           and receive an honest evaluation with a personalised 7-day coaching plan.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <ButtonLink
             href="/interview/new"
-            className="bg-[#e8321e] hover:bg-[#ff3b2d] text-white px-8 py-3 text-base font-semibold shadow-[0_0_30px_rgba(232,50,30,0.35)]"
+            className="bg-primary text-primary-foreground hover:bg-accent-hover hover:text-primary-foreground px-8 py-3 text-base font-semibold shadow-[0_0_30px_rgba(232,50,30,0.35)]"
           >
             Start Interview
           </ButtonLink>
@@ -67,21 +67,21 @@ function HowItWorks() {
     <section className="mt-16">
       <div className="max-w-5xl mx-auto px-6 sm:px-12">
         <div className="text-center mb-12">
-          <h2 className="vh-display text-3xl sm:text-4xl font-bold text-white mb-4">
+          <h2 className="vh-display text-3xl sm:text-4xl font-bold text-foreground mb-4">
             How it works
           </h2>
-          <p className="text-slate-400">
+          <p className="text-secondary">
             Three steps from setup to coaching plan.
           </p>
         </div>
         <ol className="grid gap-8 sm:grid-cols-3">
           {steps.map((step) => (
             <li key={step.number} className="space-y-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e8321e]/10 border border-[#e8321e]/30 text-[#e8321e] font-mono font-bold text-sm">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 border border-primary/30 text-primary font-mono font-bold text-sm">
                 {step.number}
               </div>
-              <h3 className="text-lg font-semibold text-white">{step.title}</h3>
-              <p className="text-sm text-slate-400 leading-relaxed">{step.description}</p>
+              <h3 className="text-lg font-semibold text-foreground">{step.title}</h3>
+              <p className="text-sm text-secondary leading-relaxed">{step.description}</p>
             </li>
           ))}
         </ol>
@@ -111,16 +111,16 @@ function Features() {
   ];
 
   return (
-    <section className="mt-16 border-t border-white/[0.08] pt-12">
+    <section className="mt-16 border-t border-border pt-12">
       <div className="max-w-5xl mx-auto px-6 sm:px-12">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((feature) => (
             <Card
               key={feature.title}
-              className="p-6 border-white/[0.06] hover:border-[#e8321e]/40 transition-colors"
+              className="p-6 border-border/60 hover:border-primary/40 transition-colors"
             >
-              <h3 className="font-semibold text-white">{feature.title}</h3>
-              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+              <h3 className="font-semibold text-foreground">{feature.title}</h3>
+              <p className="mt-2 text-sm text-secondary leading-relaxed">
                 {feature.description}
               </p>
             </Card>
@@ -133,7 +133,7 @@ function Features() {
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-slate-200">
+    <main className="min-h-screen bg-background text-foreground">
       <Hero />
       <HowItWorks />
       <Features />
