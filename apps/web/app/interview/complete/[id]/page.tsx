@@ -14,6 +14,7 @@ export default function InterviewCompletePage() {
   const interviewId = params.id as string;
   const [status, setStatus] = useState<PageStatus>("loading");
   const [error, setError] = useState("");
+  const [isDemo, setIsDemo] = useState(false);
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -21,6 +22,7 @@ export default function InterviewCompletePage() {
     try {
       const interview = await apiInterviewService.getInterview(interviewId);
       if (!interview) throw new Error("Interview session was not found.");
+      setIsDemo(interview.isDemo ?? false);
       const report = await apiInterviewService.generateEvaluation(interviewId);
       if (report.status === "completed" || report.status === "insufficient_data") {
         setStatus("success");
@@ -54,9 +56,20 @@ export default function InterviewCompletePage() {
           ) : status === "success" ? (
             <>
               <h1 className="text-2xl font-bold text-white">Interview saved</h1>
-              <p className="text-muted-foreground">
-                Your evaluation is ready. Open the report to review your scores and coaching plan.
-              </p>
+              {isDemo ? (
+                <>
+                  <p className="text-muted-foreground">
+                    Real evaluations are not generated from simulated sessions.
+                  </p>
+                  <p className="text-xs text-warning">
+                    Demo scores are heuristic simulations, not AI-generated assessments.
+                  </p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">
+                  Your evaluation is ready. Open the report to review your scores and coaching plan.
+                </p>
+              )}
               <button
                 onClick={() => router.push(`/reports/${interviewId}`)}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#e8321e] px-6 py-3 text-base font-semibold text-white hover:bg-[#ff3b2d]"
