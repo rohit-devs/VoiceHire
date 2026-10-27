@@ -18,8 +18,9 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `pnpm --dir ../.. --filter @voicehire/api exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8100`,
+      command: `C:\\VoiceHire\\apps\\api\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8100`,
       url: `${apiUrl}/api/health/ready`,
+      cwd: "../api",
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
