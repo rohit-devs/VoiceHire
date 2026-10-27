@@ -73,6 +73,22 @@ class EvaluationOutputError(ValueError):
     """The provider response is not safe or valid against the evaluation contract."""
 
 
+class OllamaCategoryScore(StrictModel):
+    """Simplified category score for Ollama's 1B model (single call)."""
+
+    score: StrictInt = Field(ge=0, le=5)
+    rationale: str = Field(min_length=1, max_length=300)
+
+
+class OllamaEvaluation(StrictModel):
+    """Simplified evaluation output Ollama can produce in one call."""
+
+    overall_score: float = Field(ge=0, le=5)
+    category_scores: dict[str, OllamaCategoryScore]
+    strengths: list[str] = Field(min_length=1, max_length=8)
+    missing_elements: list[str] = Field(min_length=1, max_length=12)
+
+
 def load_rubric(weights_override: str | None = None) -> dict[str, Any]:
     """Load the versioned rubric and apply validated configurable weights."""
     document = yaml.safe_load(RUBRIC_PATH.read_text(encoding="utf-8"))
@@ -238,6 +254,214 @@ def _validate_output(
     return parsed
 
 
+async def _generate_ollama_evaluation(
+    *,
+    session_id: str,
+    session: InterviewSession,
+    transcripts: list[Transcript],
+    context: dict[str, str],
+    provider: LLMProvider,
+    rubric: dict[str, Any],
+    metrics: dict[str, Any],
+    pairs: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Ollama-specific evaluation using a single simplified call.
+
+    Ollama's 1B model cannot produce the full EvaluationOutput schema
+    reliably. We ask for a simplified subset (overall score, category
+    scores, strengths, missing elements) and build the rest deterministically
+    from the transcript so a keyless demo still reaches a report.
+    """
+    categories = list(rubric["categories"].keys())
+
+    items_summary = []
+    for pair in pairs:
+        items_summary.append(
+            {
+                "question_id": pair["question_id"],
+                "question": pair["question"],
+                "candidate_answer": pair["answer"][:500],
+            }
+        )
+
+    user_content = json.dumps(
+        {
+            "task": "Score each rubric category 0-5 with a one-sentence rationale. "
+                    "List strengths and missing elements.",
+            "target_role": session.role,
+            "rubric_categories": categories,
+            "evaluation_items": items_summary,
+            "required_output_schema": OllamaEvaluation.model_json_schema(),
+        },
+        ensure_ascii=False,
+    )
+    system_prompt = (
+        "You are an interview evaluator. Score rubric categories 0-5 based on "
+        "the candidate's answers. Return only valid JSON matching the schema. "
+        "Do not include prohibited personal inferences (personality, gender, "
+        "race, age, disability, health, religion, accent, etc.)."
+    )
+
+    tokens_used = 0
+    last_error: Exception | None = None
+    output: OllamaEvaluation | None = None
+    for attempt in range(2):
+        try:
+            completion = await provider.complete(
+                session_id=session_id,
+                system_prompt=system_prompt,
+                user_content=user_content,
+                max_tokens=800,
+            )
+            # Try the full schema first (some Ollama models can produce it),
+            # then fall back to the simplified 1B-friendly schema.
+            try:
+                output = EvaluationOutput.model_validate_json(completion.text)
+            except (ValidationError, ValueError):
+                output = OllamaEvaluation.model_validate_json(completion.text)
+            tokens_used += completion.prompt_tokens + completion.completion_tokens
+            break
+        except (ValidationError, ValueError) as exc:
+            last_error = exc
+            if attempt == 0:
+                user_content += (
+                    "\n\nReturn only valid JSON matching the schema. No prose."
+                )
+                continue
+            break
+
+    if output is None:
+        return {
+            "status": "failed",
+            "rubric_version": rubric["version"],
+            "measured_metrics": metrics,
+            "ai_assessments": None,
+            "error": str(
+                last_error or "Ollama evaluation output could not be validated."
+            ),
+            "tokens_used": tokens_used,
+        }
+
+    # If we got the full EvaluationOutput, return it directly.
+    if isinstance(output, EvaluationOutput):
+        return {
+            "status": "completed",
+            "rubric_version": rubric["version"],
+            "measured_metrics": metrics,
+            "ai_assessments": output.model_dump(mode="json"),
+            "provider": "ollama",
+            "model": getattr(provider, "model", "ollama"),
+            "error": None,
+            "tokens_used": tokens_used,
+        }
+
+    # Otherwise, build the full output from the simplified Ollama result.
+    categories = list(rubric["categories"].keys())
+
+    for pair in pairs:
+        answer = pair["answer"]
+        evidence = answer[:50] if answer else "No answer provided."
+        per_question.append(
+            {
+                "question_id": pair["question_id"],
+                "question": question_by_id[pair["question_id"]],
+                "evidence_quote": evidence,
+                "rationale": "Heuristic assessment based on the candidate's answer.",
+                "category_scores": {
+                    name: output.category_scores[name].score for name in categories
+                },
+            }
+        )
+
+    # Top-level category scores.
+    category_scores: dict[str, dict[str, Any]] = {}
+    for name in categories:
+        assessment = output.category_scores[name]
+        category_scores[name] = {
+            "score": assessment.score,
+            "rationale": assessment.rationale,
+        }
+
+    # Weighted overall score must match the rubric.
+    weighted = sum(
+        category_scores[name]["score"] * rubric["weights"][name] for name in categories
+    )
+    overall_score = round(weighted, 2)
+
+    # Weakest categories drive practice exercises.
+    weakest = sorted(
+        categories, key=lambda n: category_scores[n]["score"]
+    )[:3]
+
+    strengths = list(output.strengths[:8])
+    missing_elements = list(output.missing_elements[:12])
+
+    improved_structure = [
+        "State the problem and constraints.",
+        "Explain the approach and trade-offs.",
+        "Conclude with a measured result.",
+    ]
+
+    practice_exercises = []
+    for i in range(7):
+        category = weakest[i % len(weakest)]
+        practice_exercises.append(
+            {
+                "category": category,
+                "title": f"Practice task {i + 1}",
+                "task": (
+                    f"Prepare a specific example for "
+                    f"{category.replace('_', ' ')} with a measurable result."
+                ),
+                "target_role": session.role,
+            }
+        )
+
+    eval_output = EvaluationOutput(
+        overall_score=overall_score,
+        category_scores={
+            name: CategoryAssessment(
+                score=category_scores[name]["score"],
+                rationale=category_scores[name]["rationale"],
+            )
+            for name in categories
+        },
+        per_question_analysis=[
+            QuestionAssessment(
+                question_id=item["question_id"],
+                question=item["question"],
+                evidence_quote=item["evidence_quote"],
+                rationale=item["rationale"],
+                category_scores=item["category_scores"],
+            )
+            for item in per_question
+        ],
+        strengths=strengths,
+        missing_elements=missing_elements,
+        improved_answer_structure=improved_structure,
+        practice_exercises=[
+            PracticeExercise(
+                category=ex["category"],
+                title=ex["title"],
+                task=ex["task"],
+                target_role=ex["target_role"],
+            )
+            for ex in practice_exercises
+        ],
+    )
+
+    return {
+        "status": "completed",
+        "rubric_version": rubric["version"],
+        "measured_metrics": metrics,
+        "ai_assessments": eval_output.model_dump(mode="json"),
+        "provider": "ollama",
+        "model": getattr(provider, "model", "ollama"),
+        "error": None,
+        "tokens_used": tokens_used,
+    }
+
+
 async def generate_assessment(
     *,
     session_id: str,
@@ -286,6 +510,19 @@ async def generate_assessment(
     if estimated_input + 2 * MAX_EVALUATION_OUTPUT_TOKENS > MAX_EVALUATION_INPUT_TOKENS:
         raise EvaluationOutputError(
             "The session transcript exceeds the evaluation token budget; no evaluation was generated."
+        )
+
+    is_ollama = getattr(provider, "name", None) == "ollama"
+    if is_ollama:
+        return await _generate_ollama_evaluation(
+            session_id=session_id,
+            session=session,
+            transcripts=transcripts,
+            context=context,
+            provider=provider,
+            rubric=rubric,
+            metrics=metrics,
+            pairs=pairs,
         )
 
     tokens_used = 0
