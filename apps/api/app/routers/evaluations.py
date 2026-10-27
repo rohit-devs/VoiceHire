@@ -575,13 +575,11 @@ async def generate_evaluation_report(
                 )
             )
         await db.commit()
-        await db.refresh(report)
         return _report_payload(report)
     except TokenBudgetExceeded as exc:
         report.status = "failed"
         report.error = str(exc)
         await db.commit()
-        await db.refresh(report)
         return _report_payload(report)
     except EvaluationOutputError as exc:
         if tokens_reserved:
@@ -596,32 +594,27 @@ async def generate_evaluation_report(
         report.status = "failed"
         report.error = str(exc)
         await db.commit()
-        await db.refresh(report)
         return _report_payload(report)
     except ProviderError as exc:
         report.status = "failed"
         report.error = exc.user_message
         await db.commit()
-        await db.refresh(report)
         raise _provider_http_exception(exc) from exc
     except LLMUnavailable:
         report.status = "failed"
         report.error = "The evaluation provider is temporarily unavailable."
         await db.commit()
-        await db.refresh(report)
         return _report_payload(report)
     except asyncio.CancelledError:
         report.status = "failed"
         report.error = "Evaluation was cancelled; no assessment was stored."
         await db.commit()
-        await db.refresh(report)
         return _report_payload(report)
     except Exception:
         logger.exception("Evaluation failed session_id=%s", session_id)
         report.status = "failed"
         report.error = "Evaluation failed unexpectedly; no assessment was stored."
         await db.commit()
-        await db.refresh(report)
         return _report_payload(report)
 
 
