@@ -11,6 +11,22 @@ VoiceHire contains a Next.js 15.5 frontend in `apps/web` and a FastAPI backend i
 
 ## Windows PowerShell: native development
 
+### Environment reproducibility (FastAPI/Starlette pin)
+
+`apps/api/pyproject.toml` pins `fastapi==0.121.3` and `starlette==0.49.1`. This pair is verified compatible on Python 3.12: Starlette 0.49.x removed `on_startup` from `Router.__init__`, and FastAPI 0.121.3 works with it. Do not loosen or unpin these versions; a fresh global Python 3.12 install without the exact pins can fail pytest collection with `Router.__init__() got an unexpected keyword argument 'on_startup'`.
+
+### Windows Application Control: .exe launcher restriction
+
+Windows Application Control blocks `.exe` launchers in `apps/api/.venv`. Never run `pytest.exe`, `pip.exe`, or `uvicorn.exe` directly. Always use module form with the venv's `python`:
+
+```powershell
+apps\api\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+apps\api\.venv\Scripts\python.exe -m pytest tests -q
+apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Do not recreate the venv; reinstall into the existing `apps/api/.venv` if packages are missing.
+
 From the repository root:
 
 ```powershell
