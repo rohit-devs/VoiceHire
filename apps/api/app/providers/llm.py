@@ -1,7 +1,11 @@
 """LLM providers: Groq (OpenAI-compatible API), local Ollama, and a clearly labelled demo fallback.
 
 Env vars:
-  LLM_PROVIDER      auto | groq | ollama | demo        (default: auto)
+  LLM_PROVIDER      auto | groq | openai_compatible | ollama | demo  (default: auto)
+  LLM_API_KEY       API key for any OpenAI-compatible endpoint (falls back to GROQ_API_KEY)
+  LLM_BASE_URL      Base URL for any OpenAI-compatible endpoint (falls back to GROQ_BASE_URL)
+  LLM_MODEL_LIVE    Fast model for live interviewer turns (falls back to GROQ_MODEL_LIVE)
+  LLM_MODEL_REPORT  Stronger model for evaluation/reports (falls back to GROQ_MODEL_REPORT)
   OLLAMA_BASE_URL   http://localhost:11434
   OLLAMA_MODEL      llama3.2:1b
   GROQ_API_KEY      key from console.groq.com
@@ -10,7 +14,14 @@ Env vars:
   GROQ_MODEL_REPORT stronger model for evaluation/reports
   DEMO_MODE         true forces the demo provider when LLM_PROVIDER=auto
 
-Model names change over time. Check Groq's model list and override via env.
+Gemini via AI Studio (free tier):
+  LLM_PROVIDER=openai_compatible
+  LLM_API_KEY=<key from aistudio.google.com>
+  LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+  LLM_MODEL_LIVE=gemini-1.5-flash
+  LLM_MODEL_REPORT=gemini-1.5-pro
+
+Model names change over time. Check your provider's model list and override via env.
 Requires `httpx` (add to apps/api dependencies if it is not already there).
 """
 from __future__ import annotations
@@ -279,33 +290,45 @@ class DemoProvider:
 
 def get_llm_provider() -> GroqProvider | OllamaProvider | DemoProvider:
     choice = os.getenv("LLM_PROVIDER", settings.LLM_PROVIDER).strip().lower()
-    key = os.getenv("GROQ_API_KEY", settings.GROQ_API_KEY).strip()
+    # Generic OpenAI-compatible env vars take precedence; GROQ_* are fallbacks.
+    api_key = (
+        os.getenv("LLM_API_KEY", settings.LLM_API_KEY).strip()
+        or os.getenv("GROQ_API_KEY", settings.GROQ_API_KEY).strip()
+    )
+    base_url = (
+        os.getenv("LLM_BASE_URL", settings.LLM_BASE_URL).strip()
+        or os.getenv("GROQ_BASE_URL", settings.GROQ_BASE_URL).strip()
+    )
+    model_live = (
+        os.getenv("LLM_MODEL_LIVE", settings.LLM_MODEL_LIVE).strip()
+        or os.getenv("GROQ_MODEL_LIVE", settings.GROQ_FAST_MODEL).strip()
+    )
+    model_report = (
+        os.getenv("LLM_MODEL_REPORT", settings.LLM_MODEL_REPORT).strip()
+        or os.getenv("GROQ_MODEL_REPORT", settings.GROQ_STRONG_MODEL).strip()
+    )
     if choice == "demo":
         return DemoProvider()
     if choice == "ollama":
         return OllamaProvider(
-            base_url=os.getenv(
-                "OLLAMA_BASE_URL", settings.OLLAMA_BASE_URL
-            ),
-            model=os.getenv(
-                "OLLAMA_MODEL", settings.OLLAMA_MODEL
-            ),
+            base_url=os.getenv("OLLAMA_BASE_URL", settings.OLLAMA_BASE_URL),
+            model=os.getenv("OLLAMA_MODEL", settings.OLLAMA_MODEL),
         )
     if choice == "auto" and (
-        env_flag("DEMO_MODE") or settings.DEMO_MODE or not key
+        env_flag("DEMO_MODE") or settings.DEMO_MODE or not api_key
     ):
         return DemoProvider()
-    if choice not in {"auto", "groq"}:
+    if choice not in {"auto", "groq", "openai_compatible"}:
         raise ProviderError(
-            "Invalid LLM_PROVIDER. Choose auto, groq, ollama, or demo."
+            "Invalid LLM_PROVIDER. Choose auto, groq, openai_compatible, ollama, or demo."
         )
-    if not key:
+    if not api_key:
         raise ProviderError(
-            "LLM_PROVIDER=groq but GROQ_API_KEY is not set."
+            "LLM_PROVIDER=groq/openai_compatible but LLM_API_KEY (or GROQ_API_KEY) is not set."
         )
     return GroqProvider(
-        key,
-        base_url=os.getenv("GROQ_BASE_URL") or settings.GROQ_BASE_URL,
-        model_live=os.getenv("GROQ_MODEL_LIVE") or settings.GROQ_FAST_MODEL,
-        model_report=os.getenv("GROQ_MODEL_REPORT") or settings.GROQ_STRONG_MODEL,
+        api_key,
+        base_url=base_url,
+        model_live=model_live,
+        model_report=model_report,
     )

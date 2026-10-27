@@ -22,6 +22,10 @@ class Settings(BaseSettings):
 
     # ── LLM provider ──
     LLM_PROVIDER: str = "auto"
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = ""
+    LLM_MODEL_LIVE: str = ""
+    LLM_MODEL_REPORT: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:1b"
 
