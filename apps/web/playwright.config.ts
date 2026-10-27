@@ -2,6 +2,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
+const isWin = process.platform === "win32";
+const apiPython = isWin ? ".venv\\Scripts\\python.exe" : "python";
 const databasePath = path.join(tmpdir(), `voicehire-playwright-${process.pid}.db`);
 const apiUrl = "http://127.0.0.1:8100";
 
@@ -18,7 +20,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `C:\\VoiceHire\\apps\\api\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8100`,
+      command: `${apiPython} -m uvicorn app.main:app --host 127.0.0.1 --port 8100`,
       url: `${apiUrl}/api/health/ready`,
       cwd: "../api",
       reuseExistingServer: false,
