@@ -1,5 +1,6 @@
 """Interview evaluation, measured analytics, and coaching-plan endpoints."""
 
+import asyncio
 import json
 import logging
 import math
@@ -405,7 +406,7 @@ async def generate_evaluation_report(
         select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
     if existing is not None:
-        if existing.status == "failed":
+        if existing.status in ("failed", "processing"):
             await db.delete(existing)
             await db.commit()
         else:
@@ -490,23 +491,13 @@ async def generate_evaluation_report(
         ai_assessments=None,
     )
     db.add(report)
-    try:
-        await db.commit()
-        await db.refresh(report)
-    except IntegrityError:
-        await db.rollback()
-        existing = await db.scalar(
-            select(EvaluationReport).where(EvaluationReport.session_id == session_id)
-        )
-        if existing is not None:
-            return _report_payload(existing)
-        raise
 
     report_id = report.id
     if not has_evaluation_pairs(transcripts):
         report.status = "insufficient_data"
         report.error = "No finalized question-and-answer pairs are available for evaluation."
         await db.commit()
+        await db.refresh(report)
         return _report_payload(report)
 
     transcript_chars = sum(len(row.message) for row in transcripts)
@@ -587,13 +578,11 @@ async def generate_evaluation_report(
         await db.refresh(report)
         return _report_payload(report)
     except TokenBudgetExceeded as exc:
-        report = await db.get(EvaluationReport, report_id)
-        if report is not None:
-            report.status = "failed"
-            report.error = str(exc)
-            await db.commit()
-            return _report_payload(report)
-        raise
+        report.status = "failed"
+        report.error = str(exc)
+        await db.commit()
+        await db.refresh(report)
+        return _report_payload(report)
     except EvaluationOutputError as exc:
         if tokens_reserved:
             await reconcile_tokens(
@@ -604,40 +593,36 @@ async def generate_evaluation_report(
                 actual_tokens=0,
             )
             tokens_reserved = False
-        report = await db.get(EvaluationReport, report_id)
-        if report is not None:
-            report.status = "failed"
-            report.error = str(exc)
-            await db.commit()
-            return _report_payload(report)
-        raise
+        report.status = "failed"
+        report.error = str(exc)
+        await db.commit()
+        await db.refresh(report)
+        return _report_payload(report)
     except ProviderError as exc:
-        report = await db.get(EvaluationReport, report_id)
-        if report is not None:
-            report.status = "failed"
-            report.error = exc.user_message
-            await db.commit()
+        report.status = "failed"
+        report.error = exc.user_message
+        await db.commit()
+        await db.refresh(report)
         raise _provider_http_exception(exc) from exc
     except LLMUnavailable:
-        # The provider may have billed a request without returning usage metadata;
-        # keep the full reservation rather than undercounting cost.
-        report = await db.get(EvaluationReport, report_id)
-        if report is not None:
-            report.status = "failed"
-            report.error = "The evaluation provider is temporarily unavailable."
-            await db.commit()
-            return _report_payload(report)
-        raise
+        report.status = "failed"
+        report.error = "The evaluation provider is temporarily unavailable."
+        await db.commit()
+        await db.refresh(report)
+        return _report_payload(report)
+    except asyncio.CancelledError:
+        report.status = "failed"
+        report.error = "Evaluation was cancelled; no assessment was stored."
+        await db.commit()
+        await db.refresh(report)
+        return _report_payload(report)
     except Exception:
         logger.exception("Evaluation failed session_id=%s", session_id)
-        await db.rollback()
-        report = await db.get(EvaluationReport, report_id)
-        if report is not None:
-            report.status = "failed"
-            report.error = "Evaluation failed unexpectedly; no assessment was stored."
-            await db.commit()
-            return _report_payload(report)
-        raise
+        report.status = "failed"
+        report.error = "Evaluation failed unexpectedly; no assessment was stored."
+        await db.commit()
+        await db.refresh(report)
+        return _report_payload(report)
 
 
 @router.get("/sessions/{session_id}/analytics")
