@@ -111,7 +111,7 @@ export default function ReportPage() {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {report?.provider === "demo"
-                ? "Demo scores are heuristic simulations, not AI-generated assessments."
+                ? "Simulated demo sessions do not have real evaluations."
                 : "AI scores are guidance for practice, not proof of competence."}
             </p>
             </div>
