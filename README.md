@@ -1,60 +1,159 @@
 # VoiceHire
 
-VoiceHire is a Next.js 15.5 application with React 19 and Clerk 6, backed by FastAPI. The API persists interview sessions, transcripts, evidence-based reports, and coaching progress. SQLAlchemy models and Alembic migrations are the backend schema authority.
+**Deliberate practice. Honest feedback.**
 
-## Current capabilities
+VoiceHire is an AI voice interview coach: the candidate practises a spoken interview,
+gets adaptive follow-up questions, and receives an honest, transparent performance report
+with a 7-day coaching plan.
 
-- Clerk authentication for configured deployments, with a clearly labeled shared local demo user when `APP_ENV=development` and `DEMO_MODE=true`.
-- Interview setup from candidate resume text and a job description or role category.
-- Text interview flow, plus optional Agora RTC and browser speech features when configured and supported.
-- Deterministic interviewer behavior for explicitly selected simulated demo sessions.
-- Persisted reports and coaching plans for completed real sessions when OpenAI is configured. Simulated sessions do not generate real evaluations.
-- SQLite for local development and PostgreSQL with pgvector for Compose/deployment.
+## Screenshots
 
-Real Agora connectivity, real OpenAI evaluation, and production deployment require provider configuration. Demo outputs are marked as simulated and must not be treated as evidence of candidate competence. No production deployment is claimed by this repository documentation.
+Responsive screenshots at 375 / 768 / 1440 px live in [`docs/screenshots/`](./docs/screenshots/):
 
-## Run locally
+| Screen | 375 px | 768 px | 1440 px |
+|--------|--------|--------|---------|
+| Landing | [landing-375](./docs/screenshots/landing-375.png) | [landing-768](./docs/screenshots/landing-768.png) | [landing-1440](./docs/screenshots/landing-1440.png) |
+| Dashboard | [dashboard-375](./docs/screenshots/dashboard-375.png) | [dashboard-768](./docs/screenshots/dashboard-768.png) | [dashboard-1440](./docs/screenshots/dashboard-1440.png) |
+| Onboarding | [onboarding-375](./docs/screenshots/onboarding-375.png) | [onboarding-768](./docs/screenshots/onboarding-768.png) | [onboarding-1440](./docs/screenshots/onboarding-1440.png) |
+| Interview prepare | [interview-prepare-375](./docs/screenshots/interview-prepare-375.png) | [interview-prepare-768](./docs/screenshots/interview-prepare-768.png) | [interview-prepare-1440](./docs/screenshots/interview-prepare-1440.png) |
+| Interview live | [interview-live-375](./docs/screenshots/interview-live-375.png) | [interview-live-768](./docs/screenshots/interview-live-768.png) | [interview-live-1440](./docs/screenshots/interview-live-1440.png) |
+| Report (demo) | [report-demo-no-evaluation-375](./docs/screenshots/report-demo-no-evaluation-375.png) | [report-demo-no-evaluation-768](./docs/screenshots/report-demo-no-evaluation-768.png) | [report-demo-no-evaluation-1440](./docs/screenshots/report-demo-no-evaluation-1440.png) |
 
-For a complete Docker stack, copy `.env.example` to `.env` and run:
+## 3-command demo quickstart
 
-```sh
-docker compose up --build
+No credentials are required to run the full demo locally.
+
+```powershell
+# 1. Install dependencies
+pnpm install --frozen-lockfile
+
+# 2. Install backend dependencies into the API venv
+apps\api\.venv\Scripts\python.exe -m pip install -e "apps/api[dev]"
+
+# 3. Start web + API (runs in DEMO_MODE with zero keys)
+pnpm dev
 ```
 
-Open the web app at <http://localhost:3000>. The API is at <http://127.0.0.1:8000>; readiness and liveness are available at `/api/health/ready` and `/api/health/live`. Native `pnpm dev` and Compose use API port 8000; the default `NEXT_PUBLIC_API_URL` points to that address. Compose runs Alembic migrations before starting the API, and binds published ports to loopback only. The example `.env` opts into the shared local demo user; without that explicit config demo mode defaults off. Never use the shared demo user with real candidate data.
+Then open <http://localhost:3000>. The API readiness endpoint is at
+<http://127.0.0.1:8000/api/health/ready>. Demo mode is on by default for local
+development; no API keys are needed. Demo outputs are clearly labelled as simulated.
 
-For native development, installation, environment setup, migrations, and Windows-specific commands, see [SETUP_GUIDE.md](./docs/setup/SETUP_GUIDE.md).
+## Environment variables
+
+Copy `.env.example` to `.env.local` (never commit populated secrets). Server-only keys
+must never be exposed through `NEXT_PUBLIC_*` variables.
+
+### Required for local demo (none — demo mode works with zero credentials)
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `APP_ENV` | Runtime mode | `development` |
+| `DEMO_MODE` | Enables local demo without API keys | `true` |
+| `DATABASE_URL` | SQLAlchemy async database URL | `sqlite+aiosqlite:///./voicehire_local.db` |
+| `NEXT_PUBLIC_DEMO_MODE` | Tells the web client demo mode is on | `true` |
+
+### Optional provider keys
+
+| Variable | Purpose | Required for |
+|----------|---------|--------------|
+| `GROQ_API_KEY` | Groq LLM (fast + strong models) | Live question generation & evaluation |
+| `GROQ_BASE_URL` | Groq API base URL | `https://api.groq.com/openai/v1` |
+| `GROQ_FAST_MODEL` | Groq fast model | `llama-3.1-8b-instant` |
+| `GROQ_STRONG_MODEL` | Groq strong model | `llama-3.3-70b-versatile` |
+| `DEEPGRAM_API_KEY` | Deepgram STT | Live voice transcription |
+| `DEEPGRAM_MODEL` | Deepgram model | `nova-3` |
+| `OLLAMA_BASE_URL` | Local Ollama endpoint | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Local Ollama model | `llama3.2:1b` |
+| `AGORA_APP_ID` / `AGORA_APP_CERTIFICATE` | Agora RTC | Real-time voice (optional) |
+| `CLERK_SECRET_KEY` / `CLERK_JWT_JWKS_URL` | Clerk auth | Hosted sign-in/sign-up (optional) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk client key | Hosted auth (optional) |
+
+### Provider selection
+
+- **LLM:** `LLM_PROVIDER=auto` prefers Groq when `GROQ_API_KEY` is set, falls back to Ollama when available, otherwise runs labeled demo/text-only mode.
+- **STT:** `STT_PROVIDER=deepgram` requires `DEEPGRAM_API_KEY`; otherwise browser Web Speech API is used.
+- **Database:** SQLite locally (`./voicehire_local.db`), PostgreSQL when deployed via `DATABASE_URL`.
+
+See [`.env.example`](.env.example) for the full commented template and
+[`docs/setup/SETUP_GUIDE.md`](docs/setup/SETUP_GUIDE.md) for Windows PowerShell and
+Linux/macOS setup.
+
+## Architecture
+
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| Web | Next.js 15.5 (App Router), TypeScript, Tailwind | Package: `@voicehire/web`, port 3000 |
+| API | FastAPI (Python 3.11+), SQLAlchemy async, Alembic | Package: voicehire-api, port 8000 |
+| Database | SQLite locally, PostgreSQL deployed | Via `DATABASE_URL` |
+| LLM | Groq via OpenAI-compatible API; Ollama local fallback | Fast model for live turns, strong model for reports |
+| STT | Deepgram Nova-3 (backend prerecorded REST); browser Web Speech fallback | |
+| TTS | Browser `speechSynthesis` | Voice selection, rate control, cancel on interruption |
+| RTC | Agora, optional | Interview works without Agora credentials |
+| Auth | Guest (X-Guest-Id UUID v4, localStorage + HttpOnly cookie); Clerk optional | Local no-Clerk demo sign-in always supported |
+| Hosting | Vercel (web) + public host for API | |
+
+Provider abstraction: one implementation per provider plus a demo/mock implementation,
+selected by env vars. `/api/health/ready` reports each provider truthfully as `ok`,
+`disabled`, or `error`. Demo mode never requires credentials.
 
 ## Verification
 
-```sh
-pnpm install --frozen-lockfile
-pnpm --filter @voicehire/web type-check
-pnpm --filter @voicehire/web lint
-pnpm --filter @voicehire/web test
-pnpm --filter @voicehire/web test:e2e
-pnpm --filter @voicehire/web build
+Run from the repository root (Windows PowerShell):
+
+```powershell
+# Frontend
+pnpm --filter @voicehire/web type-check   # tsc --noEmit
+pnpm --filter @voicehire/web lint         # ESLint
+pnpm --filter @voicehire/web test         # Vitest (28 tests)
+pnpm --filter @voicehire/web build        # Next.js build (16 routes)
+pnpm --filter @voicehire/web test:e2e -- --workers=1   # Playwright (4 browser tests)
+
+# Backend (Python 3.12 venv)
+apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q   # 97 tests
+
+# Git hygiene
+git diff --check                          # clean
 ```
 
-Backend tests (from `apps/api`):
+Baseline at last verification: type-check, lint, build (16 routes), 28 Vitest tests,
+97 pytest tests, 4 Playwright tests all passing; `git diff --check` clean.
 
-```sh
-python -m pip install -e ".[dev]"
-python -m pytest tests/ -v
-```
+## Roadmap
 
-The end-to-end browser suite starts an isolated local SQLite API and Next.js server with an explicit demo user. Cross-user access, provider outages, missing keys, database migrations, and evaluation behavior are also covered by backend tests. Consult [docs/IMPLEMENTATION_CHECKLIST.md](./docs/IMPLEMENTATION_CHECKLIST.md) for current verification results and known limitations.
+Done in order, one phase per session:
 
-## Deployment
+1. **Free-tier provider layer** — LLM/STT abstraction, Groq + Deepgram, browser TTS,
+   optional Agora, truthful health checks, quota handling, tests. ✅
+2. **Design system rollout** — tokens, primitives, all screens, before/after screenshots. ✅
+3. **Real-key verification** — user supplies keys in `.env.local`; run one full voice
+   interview; record latency and errors in the checklist. 🔑 Needs a Groq key added to
+   `.env.local` by the user.
+4. **README rewrite** — pitch, screenshots, 3-command demo quickstart, env table
+   (required vs optional), architecture, test commands, roadmap, licence. ✅
+5. **CI green** — `.github/workflows/ci.yml` runs install, type-check, lint, test, build,
+   pytest, Playwright in demo mode. ✅
+6. **PR and merge** into the default branch. ⬜
+7. **Deploy** — web on Vercel, API on a public host with PostgreSQL, demo mode first. ⬜
+8. **Final check** on a phone against the live URL. ⬜
 
-See [DEPLOYMENT.md](./docs/operations/DEPLOYMENT.md) and [docs/DEPLOYMENT_CHECKLIST.md](./docs/operations/DEPLOYMENT_CHECKLIST.md) for Vercel web deployment, Railway/Render API deployment, migration, Clerk, CORS, and secret configuration. Keep server-only credentials in server secret stores; never expose OpenAI keys, Agora certificates, or Clerk secret keys through `NEXT_PUBLIC_*` variables.
+## Provider rules
 
-## Architecture and operations
+- All providers sit behind an abstraction in `apps/api`: one implementation per provider
+  plus one demo/mock implementation. Select by env vars. Never hardcode a provider.
+- Handle 429 and quota errors: retry once with backoff, then show a clear message and
+  offer the text-input fallback or demo mode. Never crash the interview.
+- Every report states which provider and model produced it.
+- CORS origins come from env, never `*` in production.
 
-- [SETUP_GUIDE.md](./docs/setup/SETUP_GUIDE.md) — Windows PowerShell and Linux/macOS setup.
-- [DEPLOYMENT.md](./docs/operations/DEPLOYMENT.md) — deployment steps and environment configuration.
-- [docs/DEPLOYMENT_CHECKLIST.md](./docs/operations/DEPLOYMENT_CHECKLIST.md) — release verification checklist.
-- [docs/TROUBLESHOOTING.md](./docs/operations/TROUBLESHOOTING.md) — common local and provider issues.
-- [docs/database-setup.md](./docs/architecture/database-setup.md) — schema ownership and migration workflow.
-- [docs/VOICE_ARCHITECTURE.md](./docs/architecture/VOICE_ARCHITECTURE.md) — voice architecture and explicit capability limits.
-- [docs/IMPLEMENTATION_CHECKLIST.md](./docs/IMPLEMENTATION_CHECKLIST.md) — feature inventory, verified baseline, and remaining work.
+## Security and privacy
+
+- Keys live in `.env.local` (local), Vercel env vars (web), and the API host's variables.
+  Never log keys, tokens, transcripts, or resume text in plain output.
+- Demo data is simulated and labelled; users are told not to enter real candidate data
+  in demo mode.
+- Keep dependencies patched. Do not downgrade to silence an advisory.
+
+## Licence
+
+No licence file is present in this repository. Contact the repository owner before
+reusing or distributing.
