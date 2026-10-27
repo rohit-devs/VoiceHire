@@ -181,6 +181,35 @@ async def test_parse_llm_output_accepts_plain_text_question():
 
 
 @pytest.mark.asyncio
+async def test_parse_llm_output_extracts_json_from_prose():
+    """JSON wrapped in prose must be extracted; the prose wrapper is rejected."""
+    coordinator = PromptChainCoordinator(FakeProvider())
+    prose_wrapped = (
+        'Here is the generated question in JSON format: '
+        '{"question_text": "Can you describe a distributed system you designed?", '
+        '"reasoning": "Follow-up on distributed systems experience.", '
+        '"difficulty_level": 2}'
+    )
+    result = coordinator._parse_llm_output(prose_wrapped, set())
+    assert result is not None, f"Prose-wrapped JSON should be extracted, got: {result}"
+    question, reasoning = result
+    assert question == "Can you describe a distributed system you designed?"
+    assert reasoning == "Follow-up on distributed systems experience."
+
+
+@pytest.mark.asyncio
+async def test_parse_llm_output_rejects_invalid_json_in_prose():
+    """Invalid JSON wrapped in prose must be rejected, not treated as a question."""
+    coordinator = PromptChainCoordinator(FakeProvider())
+    bad_prose = (
+        "Here is the question: {question_text: missing quotes, "
+        "reasoning: bad, difficulty_level: not_a_number}"
+    )
+    result = coordinator._parse_llm_output(bad_prose, set())
+    assert result is None, f"Invalid JSON in prose should be rejected, got: {result}"
+
+
+@pytest.mark.asyncio
 async def test_session_cannot_start_without_real_setup_and_budget_exhaustion(monkeypatch):
     monkeypatch.setattr(settings, "DEMO_MODE", True)
     monkeypatch.setattr(settings, "GROQ_API_KEY", "")

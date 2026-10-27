@@ -216,6 +216,8 @@ class PromptChainCoordinator:
 
         Returns (question_text, reasoning) or None on failure.
         Accepts both JSON (preferred) and plain text output from legacy providers.
+        If the LLM wraps JSON in prose, the JSON object is extracted and the
+        surrounding prose is rejected.
         """
         text = text.strip()
         question: Optional[str] = None
@@ -232,9 +234,21 @@ class PromptChainCoordinator:
             # trigger regeneration instead of treating the prompt as a question.
             return None
         except json.JSONDecodeError:
-            # Not JSON — fall back to plain text from legacy providers.
-            question = text.strip().strip('"')
-            reasoning = None
+            # Not pure JSON. Try to extract a JSON object wrapped in prose.
+            extracted = self._extract_json_from_prose(text)
+            if extracted is not None:
+                try:
+                    data = json.loads(extracted)
+                    payload = GeneratedQuestionPayload.model_validate(data)
+                    question = payload.question_text.strip()
+                    reasoning = payload.reasoning.strip()
+                except (ValidationError, json.JSONDecodeError):
+                    # Prose contains invalid or wrong-schema JSON. Reject.
+                    return None
+            else:
+                # No JSON found — fall back to plain text from legacy providers.
+                question = text.strip().strip('"')
+                reasoning = None
 
         if not question:
             return None
@@ -306,3 +320,39 @@ class PromptChainCoordinator:
     @staticmethod
     def _normalize(text: str) -> str:
         return " ".join("".join(char.lower() if char.isalnum() else " " for char in text).split())
+
+    @staticmethod
+    def _extract_json_from_prose(text: str) -> Optional[str]:
+        """Extract the first JSON object found within prose text.
+
+        Uses a brace-matching scan to handle nested objects. Returns the
+        extracted JSON string, or None if no complete JSON object is found.
+        """
+        start = text.find("{")
+        if start == -1:
+            return None
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            char = text[i]
+            if escape:
+                escape = False
+                continue
+            if char == "\\":
+                escape = True
+                continue
+            if in_string:
+                if char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+                continue
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        return None
