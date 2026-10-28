@@ -505,15 +505,62 @@ async def generate_evaluation_report(
             )
         ).all()
     )
+    computed_metrics = measured_evidence(session, transcripts)
     report = EvaluationReport(
         session_id=session_id,
         status="processing",
         rubric_version=rubric["version"],
-        measured_metrics=measured_evidence(session, transcripts),
+        measured_metrics=computed_metrics,
         ai_assessments=None,
         started_at=datetime.now(timezone.utc),
     )
     db.add(report)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(
+            select(EvaluationReport).where(EvaluationReport.session_id == session_id)
+        )
+        if existing is not None:
+            if existing.status == "processing":
+                if existing.started_at is not None:
+                    elapsed = (
+                        datetime.now(timezone.utc) - existing.started_at
+                    ).total_seconds()
+                    if elapsed < settings.EVALUATION_STALE_TIMEOUT_SECONDS:
+                        return _report_payload(existing)
+                    existing.status = "failed"
+                    existing.error = (
+                        "Evaluation timed out; no assessment was stored."
+                    )
+                else:
+                    existing.status = "failed"
+                    existing.error = (
+                        "Evaluation timed out; no assessment was stored."
+                    )
+                await db.commit()
+                await db.refresh(existing)
+                report = existing
+                report_id = report.id
+            elif existing.status == "failed":
+                await db.delete(existing)
+                await db.commit()
+                report = EvaluationReport(
+                    session_id=session_id,
+                    status="processing",
+                    rubric_version=rubric["version"],
+                    measured_metrics=computed_metrics,
+                    ai_assessments=None,
+                    started_at=datetime.now(timezone.utc),
+                )
+                db.add(report)
+                await db.flush()
+                report_id = report.id
+            else:
+                return _report_payload(existing)
+        else:
+            raise
 
     report_id = report.id
     if not has_evaluation_pairs(transcripts):
@@ -600,9 +647,18 @@ async def generate_evaluation_report(
         await db.commit()
         return _report_payload(report)
     except TokenBudgetExceeded as exc:
-        report.status = "failed"
-        report.error = str(exc)
+        await db.rollback()
+        report = EvaluationReport(
+            session_id=session_id,
+            status="failed",
+            rubric_version=rubric["version"],
+            measured_metrics=computed_metrics,
+            ai_assessments=None,
+            error=str(exc),
+        )
+        db.add(report)
         await db.commit()
+        await db.refresh(report)
         return _report_payload(report)
     except EvaluationOutputError as exc:
         if tokens_reserved:
@@ -614,30 +670,75 @@ async def generate_evaluation_report(
                 actual_tokens=0,
             )
             tokens_reserved = False
-        report.status = "failed"
-        report.error = str(exc)
+        await db.rollback()
+        report = EvaluationReport(
+            session_id=session_id,
+            status="failed",
+            rubric_version=rubric["version"],
+            measured_metrics=computed_metrics,
+            ai_assessments=None,
+            error=str(exc),
+        )
+        db.add(report)
         await db.commit()
+        await db.refresh(report)
         return _report_payload(report)
     except ProviderError as exc:
-        report.status = "failed"
-        report.error = exc.user_message
+        await db.rollback()
+        report = EvaluationReport(
+            session_id=session_id,
+            status="failed",
+            rubric_version=rubric["version"],
+            measured_metrics=computed_metrics,
+            ai_assessments=None,
+            error=exc.user_message,
+        )
+        db.add(report)
         await db.commit()
+        await db.refresh(report)
         raise _provider_http_exception(exc) from exc
     except LLMUnavailable:
-        report.status = "failed"
-        report.error = "The evaluation provider is temporarily unavailable."
+        await db.rollback()
+        report = EvaluationReport(
+            session_id=session_id,
+            status="failed",
+            rubric_version=rubric["version"],
+            measured_metrics=computed_metrics,
+            ai_assessments=None,
+            error="The evaluation provider is temporarily unavailable.",
+        )
+        db.add(report)
         await db.commit()
+        await db.refresh(report)
         return _report_payload(report)
     except asyncio.CancelledError:
-        report.status = "failed"
-        report.error = "Evaluation was cancelled; no assessment was stored."
+        await db.rollback()
+        report = EvaluationReport(
+            session_id=session_id,
+            status="failed",
+            rubric_version=rubric["version"],
+            measured_metrics=computed_metrics,
+            ai_assessments=None,
+            error="Evaluation was cancelled; no assessment was stored.",
+        )
+        db.add(report)
         await db.commit()
+        await db.refresh(report)
         return _report_payload(report)
     except Exception:
         logger.exception("Evaluation failed session_id=%s", session_id)
-        report.status = "failed"
-        report.error = "Evaluation failed unexpectedly; no assessment was stored."
+        await db.rollback()
+        report = EvaluationReport(
+            session_id=session_id,
+            status="failed",
+            rubric_version=rubric["version"],
+            measured_metrics=computed_metrics,
+            ai_assessments=None,
+            error="Evaluation failed unexpectedly; no assessment was stored.",
+        )
+        db.add(report)
         await db.commit()
+        await db.refresh(report)
         return _report_payload(report)
 
 
