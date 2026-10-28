@@ -21,22 +21,31 @@ Responsive screenshots at 375 / 768 / 1440 px live in [`docs/screenshots/`](./do
 
 ## 3-command demo quickstart
 
-No credentials are required to run the full demo locally.
+No credentials are required to run the full demo locally. The backend runs in
+`C:\venvs\voicehire` (Python 3.12 venv); do **not** use `apps/api/.venv` (blocked by
+Windows Application Control on `.exe` launchers — use `python -m` module form).
 
 ```powershell
-# 1. Install dependencies
+# 0. Set the venv on PATH (do this in every terminal)
+$env:Path = "C:\venvs\voicehire\Scripts;" + $env:Path
+
+# 1. Install frontend dependencies
 pnpm install --frozen-lockfile
 
 # 2. Install backend dependencies into the API venv
-apps\api\.venv\Scripts\python.exe -m pip install -e "apps/api[dev]"
+python -m pip install -e "apps/api[dev]"
 
-# 3. Start web + API (runs in DEMO_MODE with zero keys)
-pnpm dev
+# 3. Start API on port 8000 (no --reload for live demo runs)
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+# (in a second terminal) Start web on port 3000
+pnpm --filter @voicehire/web dev --port 3000
 ```
 
 Then open <http://localhost:3000>. The API readiness endpoint is at
-<http://127.0.0.1:8000/api/health/ready>. Demo mode is on by default for local
-development; no API keys are needed. Demo outputs are clearly labelled as simulated.
+<http://127.0.0.1:8000/api/health/ready>. Ollama (`llama3.2:1b`) is the default LLM
+provider and runs locally with zero API keys. When Ollama output fails schema
+validation, a deterministic fallback produces a report clearly labelled
+`demo-quality`. No API keys are needed for the full interview-to-report flow.
 
 ## Environment variables
 
@@ -75,20 +84,23 @@ must never be exposed through `NEXT_PUBLIC_*` variables.
 ### Provider selection
 
 - **LLM:** `LLM_PROVIDER=auto` prefers Groq when `GROQ_API_KEY` (or `LLM_API_KEY`) is set, falls back to Ollama when available, otherwise runs labeled demo/text-only mode.
-- **LLM without keys:** Ollama (`llama3.2:1b`) runs locally at degraded quality. Evaluation reports are generated using a simplified single-call path; quality is lower than Groq but the full interview-to-report flow works.
+- **LLM without keys:** Ollama (`llama3.2:1b`) runs locally. Evaluation uses structured output (`format` JSON schema) split into three smaller calls merged in code; when validation fails, a deterministic fallback from measured metrics produces a report labelled `demo-quality` (`quality_tier` field). The full interview-to-report flow works keyless.
+- **LLM with OpenAI-compatible key:** Set `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL` (e.g. `https://generativelanguage.googleapis.com/v1beta/openai/` for Gemini), `LLM_API_KEY`, `LLM_MODEL_LIVE`, `LLM_MODEL_REPORT`. The Gemini Flash model name is not pinned in the repo — verify the current model name in Google AI Studio docs before setting `LLM_MODEL_LIVE`/`LLM_MODEL_REPORT`.
 - **STT:** `STT_PROVIDER=deepgram` requires `DEEPGRAM_API_KEY`; otherwise browser Web Speech API is used.
 - **Database:** SQLite locally (`./voicehire_local.db`), PostgreSQL deployed via `DATABASE_URL`.
 
+### Guest identity and two-step question flow
+
+All API calls require a guest identity. Pass an `X-Guest-Id` header (UUID v4) on every request — the same header value must be used across session creation, start, transcript, generate-question, end, and report endpoints. Follow-up questions use a two-step flow: `POST /api/interviews/sessions/{id}/transcript` records the candidate's answer and sets state to `processing_response`; then `POST /api/interviews/sessions/{id}/generate-question` (with `candidate_transcript` matching the saved answer) generates the next question and advances to `interviewing`.
+
 ### Keyless demo (what works with zero credentials)
 
-The 3-command quickstart runs entirely in demo mode with no API keys:
+The quickstart runs entirely without API keys using Ollama:
 
-- **Interview:** Full Q&A flow works via the demo provider (clearly labelled as simulated).
-- **Report:** Demo heuristic evaluation is generated (clearly labelled as simulated, not AI-generated).
-- **Voice:** Browser Web Speech API STT is available; Deepgram requires a key.
-- **Auth:** Guest sign-in (no Clerk) always works.
-
-To use Ollama instead of demo mode (still keyless, degraded quality), set `LLM_PROVIDER=ollama` and `DEMO_MODE=false`.
+- **Interview:** Real Q&A flow via Ollama `llama3.2:1b` (not simulated). Follow-up questions are generated per turn.
+- **Report:** Structured evaluation via Ollama with deterministic fallback. When Ollama output validates, `quality_tier: "ai-generated"`; when it fails, `quality_tier: "demo-quality"` with scores derived from measured metrics. Either way, a report is always produced.
+- **Voice:** Browser Web Speech API STT is available; Deepgram requires a key. Browser `speechSynthesis` TTS is client-side.
+- **Auth:** Guest sign-in (no Clerk) always works via `X-Guest-Id` header.
 
 See [`.env.example`](.env.example) for the full commented template and
 [`docs/setup/SETUP_GUIDE.md`](docs/setup/SETUP_GUIDE.md) for Windows PowerShell and
@@ -101,7 +113,7 @@ Linux/macOS setup.
 | Web | Next.js 15.5 (App Router), TypeScript, Tailwind | Package: `@voicehire/web`, port 3000 |
 | API | FastAPI (Python 3.11+), SQLAlchemy async, Alembic | Package: voicehire-api, port 8000 |
 | Database | SQLite locally, PostgreSQL deployed | Via `DATABASE_URL` |
-| LLM | Groq via OpenAI-compatible API; Ollama local fallback (degraded quality) | Fast model for live turns, strong model for reports; Ollama is keyless |
+| LLM | Groq via OpenAI-compatible API; Ollama local fallback | Fast model for live turns, strong model for reports; Ollama is keyless. Evaluation uses structured output (JSON schema) split into three smaller calls merged in code; deterministic fallback labelled `demo-quality` when Ollama output fails validation. |
 | STT | Deepgram Nova-3 (backend prerecorded REST); browser Web Speech fallback | |
 | TTS | Browser `speechSynthesis` | Voice selection, rate control, cancel on interruption |
 | RTC | Agora, optional | Interview works without Agora credentials |
@@ -117,22 +129,34 @@ selected by env vars. `/api/health/ready` reports each provider truthfully as `o
 Run from the repository root (Windows PowerShell):
 
 ```powershell
+# Set the venv on PATH (do this in every terminal)
+$env:Path = "C:\venvs\voicehire\Scripts;" + $env:Path
+
 # Frontend
 pnpm --filter @voicehire/web type-check   # tsc --noEmit
 pnpm --filter @voicehire/web lint         # ESLint
-pnpm --filter @voicehire/web test         # Vitest (28 tests)
-pnpm --filter @voicehire/web build        # Next.js build (16 routes)
-pnpm --filter @voicehire/web test:e2e -- --workers=1   # Playwright (4 browser tests)
+pnpm --filter @voicehire/web test         # Vitest (30 tests)
+pnpm --filter @voicehire/web build        # Next.js build
 
-# Backend (Python 3.12 venv)
-apps\api\.venv\Scripts\python.exe -m pytest apps\api\tests -q   # 99 tests
+# Backend (Python 3.12 venv at C:\venvs\voicehire)
+python -m pip check                       # verify dependencies
+python -m pytest apps\api\tests -q        # 107 tests
 
 # Git hygiene
 git diff --check                          # clean
 ```
 
-Baseline at last verification: type-check, lint, build (16 routes), 28 Vitest tests,
-99 pytest tests, 4 Playwright tests all passing; `git diff --check` clean.
+Never run `pytest.exe`, `pip.exe`, or `uvicorn.exe` directly — Windows Application
+Control blocks `.exe` launchers in the venv. Use `python -m pytest`, `python -m pip`,
+`python -m uvicorn` instead.
+
+For live demo runs, start the API **without** `--reload` (reload restarts the server on
+every file edit and kills long Ollama calls). Restart manually after edits.
+
+Baseline at last verification: type-check, lint, build, 30 Vitest tests, 107 pytest
+tests all passing; `git diff --check` clean. Playwright browser tests are blocked on
+this 8 GB dev machine by OOM kills when Node.js + Python + Ollama run simultaneously;
+the full interview-to-report flow was verified via direct API calls instead.
 
 ## Roadmap
 
@@ -142,7 +166,7 @@ Done in order, one phase per session:
    optional Agora, truthful health checks, quota handling, tests. ✅
 2. **Design system rollout** — tokens, primitives, all screens, before/after screenshots. ✅
 3. **Real-key verification** — Groq key in `.env.local` for full-quality AI evaluation.
-   Ollama (`llama3.2:1b`) works keyless at degraded quality; record both in the checklist.
+   Ollama (`llama3.2:1b`) works keyless; record both in the checklist.
    🔑 Needs a Groq key added to `.env.local` by the user.
 4. **README rewrite** — pitch, screenshots, 3-command demo quickstart, env table
    (required vs optional), architecture, test commands, roadmap, licence. ✅
@@ -158,8 +182,9 @@ Done in order, one phase per session:
   plus one demo/mock implementation. Select by env vars. Never hardcode a provider.
 - Handle 429 and quota errors: retry once with backoff, then show a clear message and
   offer the text-input fallback or demo mode. Never crash the interview.
-- Every report states which provider and model produced it. Ollama reports are
-  clearly labelled as degraded quality (1B local model).
+- Every report states which provider and model produced it. Ollama reports carry
+  `quality_tier: "ai-generated"` when Ollama output validated, or
+  `quality_tier: "demo-quality"` when a deterministic fallback was used.
 - CORS origins come from env, never `*` in production.
 
 ## Security and privacy

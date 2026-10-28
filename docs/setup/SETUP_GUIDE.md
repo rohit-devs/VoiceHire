@@ -17,15 +17,21 @@ VoiceHire contains a Next.js 15.5 frontend in `apps/web` and a FastAPI backend i
 
 ### Windows Application Control: .exe launcher restriction
 
-Windows Application Control blocks `.exe` launchers in `apps/api/.venv`. Never run `pytest.exe`, `pip.exe`, or `uvicorn.exe` directly. Always use module form with the venv's `python`:
+Windows Application Control blocks `.exe` launchers in Python virtual environments.
+Never run `pytest.exe`, `pip.exe`, or `uvicorn.exe` directly. Always use module form
+with the venv's `python`. The API venv lives at `C:\venvs\voicehire` (not
+`apps/api/.venv`, which is damaged on this machine):
 
 ```powershell
-apps\api\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-apps\api\.venv\Scripts\python.exe -m pytest tests -q
-apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+$env:Path = "C:\venvs\voicehire\Scripts;" + $env:Path
+python -m pip install -e ".[dev]"
+python -m pytest tests -q
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Do not recreate the venv; reinstall into the existing `apps/api/.venv` if packages are missing.
+Do not recreate the venv; reinstall into `C:\venvs\voicehire` if packages are missing.
+For live demo runs, start the API **without** `--reload` (reload restarts the server on
+every file edit and kills long Ollama calls). Restart manually after edits.
 
 From the repository root:
 
@@ -103,24 +109,24 @@ If using Clerk locally, add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and server-only 
 Create and install the API virtual environment:
 
 ```powershell
-py -3.12 -m venv apps\api\.venv
-.\apps\api\.venv\Scripts\Activate.ps1
+py -3.12 -m venv C:\venvs\voicehire
+C:\venvs\voicehire\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e "apps\api[dev]"
+python -m pip install -e "apps/api[dev]"
 pnpm --filter @voicehire/api db:migrate
 ```
 
 Start both apps together from the repository root:
 
 ```powershell
-.\apps\api\.venv\Scripts\Activate.ps1
+C:\venvs\voicehire\Scripts\Activate.ps1
 pnpm dev
 ```
 
 Or start them separately in two terminals:
 
 ```powershell
-.\apps\api\.venv\Scripts\Activate.ps1
+C:\venvs\voicehire\Scripts\Activate.ps1
 pnpm --filter @voicehire/api dev
 ```
 
@@ -135,12 +141,59 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health/ready
 Invoke-RestMethod http://127.0.0.1:8000/api/health/live
 ```
 
+### Guest identity and two-step question flow
+
+All API calls require a guest identity. Pass an `X-Guest-Id` header (UUID v4) on every
+request — the same header value must be used across session creation, start,
+transcript, generate-question, end, and report endpoints.
+
+Follow-up questions use a two-step flow:
+
+1. `POST /api/interviews/sessions/{id}/transcript` — records the candidate's answer
+   and sets session state to `processing_response`.
+2. `POST /api/interviews/sessions/{id}/generate-question` — with `candidate_transcript`
+   matching the saved answer, generates the next question and advances state to
+   `interviewing`.
+
+Example (PowerShell):
+
+```powershell
+$guestId = [guid]::NewGuid().ToString()
+# 1. Create session
+$session = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/interviews/sessions" `
+  -Headers @{"Content-Type"="application/json"; "X-Guest-Id"=$guestId} `
+  -Body (@{role="Backend Engineer"; difficulty="medium"; is_demo=$false} | ConvertTo-Json)
+# 2. Start interview
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/interviews/sessions/$($session.id)/start" `
+  -Headers @{"X-Guest-Id"=$guestId}
+# 3. Submit answer
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/interviews/sessions/$($session.id)/transcript" `
+  -Headers @{"Content-Type"="application/json"; "X-Guest-Id"=$guestId} `
+  -Body (@{speaker="candidate"; message="I am a backend engineer."} | ConvertTo-Json)
+# 4. Generate follow-up question
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/interviews/sessions/$($session.id)/generate-question" `
+  -Headers @{"Content-Type"="application/json"; "X-Guest-Id"=$guestId} `
+  -Body (@{candidate_transcript="I am a backend engineer."} | ConvertTo-Json)
+# 5. End interview
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/interviews/sessions/$($session.id)/end" `
+  -Headers @{"X-Guest-Id"=$guestId}
+# 6. Generate evaluation report
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/evaluations/sessions/$($session.id)/report/generate" `
+  -Headers @{"X-Guest-Id"=$guestId}
+```
+
 ## Access from another device on your LAN
 
 The same-origin `/api/*` rewrite forwards browser requests from the Next.js server to `API_INTERNAL_URL`; do not set `NEXT_PUBLIC_API_URL` to `127.0.0.1`, because that address would refer to the browser's own device. On the development computer, activate the API virtual environment and start both apps from the repository root:
 
 ```powershell
-.\apps\api\.venv\Scripts\Activate.ps1
+C:\venvs\voicehire\Scripts\Activate.ps1
 pnpm dev:lan
 ```
 
@@ -180,8 +233,8 @@ cp .env.example .env
 Edit `.env` and set `DATABASE_URL=sqlite+aiosqlite:///./voicehire_local.db` for SQLite, then create the virtual environment and migrate:
 
 ```sh
-python3.12 -m venv apps/api/.venv
-. apps/api/.venv/bin/activate
+python3.12 -m venv C:\venvs\voicehire
+. C:\venvs\voicehire/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e 'apps/api[dev]'
 pnpm --filter @voicehire/api db:migrate
@@ -221,25 +274,25 @@ The example `.env` explicitly enables the shared local demo account; without it,
 
 ## Tests and quality checks
 
-Activate the API virtual environment, then from the repository root:
+Activate the API virtual environment (`C:\venvs\voicehire`), then from the repository root:
 
-```sh
+```powershell
+$env:Path = "C:\venvs\voicehire\Scripts;" + $env:Path
+
+# Frontend
 pnpm --filter @voicehire/web type-check
 pnpm --filter @voicehire/web lint
 pnpm --filter @voicehire/web test
-pnpm --filter @voicehire/web exec playwright install chromium
-pnpm --filter @voicehire/web test:e2e
 pnpm --filter @voicehire/web build
-```
 
-Backend tests and migrations:
-
-```sh
-python -m pytest apps/api/tests/ -v
-pnpm --filter @voicehire/api db:migrate
+# Backend
+python -m pip check
+python -m pytest apps/api/tests/ -q
 ```
 
 Playwright starts its own API and web servers, uses a fresh temporary SQLite database, and runs in explicit local demo mode. It does not require Clerk, Groq, Deepgram, or Agora credentials. The demo interview path intentionally does not create a real evaluation or coaching plan; authenticated real-session evaluation is covered by API tests with a deterministic fake provider.
+
+On this 8 GB dev machine, Playwright browser tests are blocked by OOM kills when Node.js + Python + Ollama run simultaneously. The full interview-to-report flow was verified via direct API calls instead (session creation → start → transcript → generate-question → end → report/generate).
 
 ## Environment and credentials
 
