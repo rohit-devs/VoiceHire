@@ -147,6 +147,7 @@ class PromptChainCoordinator:
                     system_prompt=self.system_prompt,
                     user_content=conversation_text,
                     max_tokens=MAX_OUTPUT_TOKENS,
+                    format=json.dumps(GeneratedQuestionPayload.model_json_schema()),
                 )
                 parsed = self._parse_llm_output(completion.text, prior_questions)
                 if parsed is not None:
@@ -236,9 +237,12 @@ class PromptChainCoordinator:
         except json.JSONDecodeError:
             # Not pure JSON. If the text contains a JSON object or schema keys
             # (even wrapped in prose), reject it entirely — do not extract
-            # and validate embedded JSON. Only plain text from legacy
-            # providers is accepted as a fallback.
+            # and validate embedded JSON. Also reject prompt echo (prose that
+            # wraps a question instead of asking it directly). Only plain text
+            # from legacy providers is accepted as a fallback.
             if "{" in text or self._contains_schema_keys(text):
+                return None
+            if self._contains_prompt_echo(text):
                 return None
             question = text.strip().strip('"')
             reasoning = None
@@ -277,6 +281,32 @@ class PromptChainCoordinator:
         keys = ("task", "format", "schema", "question_text", "reasoning")
         lower = text.lower()
         return any(f'"{k}"' in lower for k in keys)
+
+    @staticmethod
+    def _contains_prompt_echo(text: str) -> bool:
+        """Return True if the text wraps a question in prose instead of asking it directly.
+
+        Ollama's 1B model often prefixes questions with phrases like
+        "Here's a clear question to follow up on..." instead of emitting
+        the question alone. Such output should be rejected so the caller
+        regenerates (or falls back to the question bank).
+        """
+        lower = text.lower().strip()
+        echo_prefixes = (
+            "here's a clear question",
+            "here is the question",
+            "here's the question",
+            "here's a question",
+            "here is a question",
+            "here is your question",
+            "here's your question",
+            "i have generated",
+            "here is a follow-up",
+            "here's a follow-up",
+            "the following question",
+            "below is the question",
+        )
+        return any(lower.startswith(p) for p in echo_prefixes)
 
     @staticmethod
     def _similarity(a: str, b: str) -> float:
