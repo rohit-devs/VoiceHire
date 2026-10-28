@@ -6,7 +6,7 @@ import logging
 import math
 import re
 from copy import deepcopy
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -406,7 +406,28 @@ async def generate_evaluation_report(
         select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
     if existing is not None:
-        if existing.status in ("failed", "processing"):
+        if existing.status == "processing":
+            if existing.started_at is not None:
+                elapsed = (
+                    datetime.now(timezone.utc) - existing.started_at
+                ).total_seconds()
+                if elapsed < settings.EVALUATION_STALE_TIMEOUT_SECONDS:
+                    # Fresh in-flight evaluation — return existing row, no second job
+                    return _report_payload(existing)
+                # Stale — mark failed and fall through to regenerate
+                existing.status = "failed"
+                existing.error = (
+                    "Evaluation timed out; no assessment was stored."
+                )
+                await db.commit()
+            else:
+                # No started_at recorded — treat as stale
+                existing.status = "failed"
+                existing.error = (
+                    "Evaluation timed out; no assessment was stored."
+                )
+                await db.commit()
+        elif existing.status == "failed":
             await db.delete(existing)
             await db.commit()
         else:
@@ -489,6 +510,7 @@ async def generate_evaluation_report(
         rubric_version=rubric["version"],
         measured_metrics=measured_evidence(session, transcripts),
         ai_assessments=None,
+        started_at=datetime.now(timezone.utc),
     )
     db.add(report)
 

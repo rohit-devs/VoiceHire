@@ -7,8 +7,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
-from app.database import init_db, close_db
+from app.database import init_db, close_db, async_session
 from app.routers import health, agora, interviews, evaluations, users, phase4, agora_events, stt
+from app.models import EvaluationReport
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timezone
+
+
+async def _startup_cleanup_stale_evaluations() -> None:
+    """Mark leftover 'processing' evaluation reports as 'failed' on startup."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(EvaluationReport).where(EvaluationReport.status == "processing")
+        )
+        stale = result.scalars().all()
+        now = datetime.now(timezone.utc)
+        for report in stale:
+            report.status = "failed"
+            report.error = (
+                "Evaluation was interrupted; no assessment was stored."
+            )
+        if stale:
+            await session.commit()
+            print(
+                f"[Startup] Marked {len(stale)} leftover processing evaluation(s) as failed."
+            )
 
 
 @asynccontextmanager
@@ -27,6 +51,7 @@ async def lifespan(app: FastAPI):
     else:
         print("[Startup] All optional provider keys are set.")
     await init_db()
+    await _startup_cleanup_stale_evaluations()
     yield
     await close_db()
     print("[Shutdown] VoiceHire backend stopped.")

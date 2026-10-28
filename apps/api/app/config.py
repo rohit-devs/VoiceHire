@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     DEEPGRAM_API_KEY: str = ""
     DEEPGRAM_MODEL: str = "nova-3"
     EVALUATION_RUBRIC_WEIGHTS: str = ""
+    EVALUATION_STALE_TIMEOUT_SECONDS: int = 300
 
     # ── AI (Groq) ──
     GROQ_API_KEY: str = ""

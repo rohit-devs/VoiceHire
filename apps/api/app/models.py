@@ -219,6 +219,7 @@ class EvaluationReport(TimestampMixin, Base):
     measured_metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     ai_assessments: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InterviewAnalytics(TimestampMixin, Base):
