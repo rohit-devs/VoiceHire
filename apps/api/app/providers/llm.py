@@ -117,6 +117,7 @@ class GroqProvider:
         purpose: str = "live",
         temperature: float = 0.4,
         max_tokens: int = 600,
+        format: str | None = None,
     ) -> str:
         payload = {
             "model": self.model_for(purpose),
@@ -192,6 +193,7 @@ class OllamaProvider:
         purpose: str = "live",
         temperature: float = 0.4,
         max_tokens: int = 600,
+        format: str | None = None,
     ) -> str:
         payload = {
             "model": self.model_for(purpose),
@@ -205,6 +207,8 @@ class OllamaProvider:
                 "num_predict": max_tokens,
             },
         }
+        if format is not None:
+            payload["format"] = format
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -256,6 +260,7 @@ class DemoProvider:
         purpose: str = "live",
         temperature: float = 0.4,
         max_tokens: int = 600,
+        format: str | None = None,
     ) -> str:
         if purpose == "report":
             return "[Simulated] Demo evaluation. Not based on a real AI assessment."

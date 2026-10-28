@@ -31,7 +31,13 @@ class Completion:
 
 class LLMProvider(Protocol):
     async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
+        self,
+        *,
+        session_id: str,
+        system_prompt: str,
+        user_content: str,
+        max_tokens: int,
+        format: str | None = None,
     ) -> Completion: ...
 
 
@@ -64,7 +70,13 @@ class GroqProvider:
         )
 
     async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
+        self,
+        *,
+        session_id: str,
+        system_prompt: str,
+        user_content: str,
+        max_tokens: int,
+        format: str | None = None,
     ) -> Completion:
         for attempt in range(2):
             try:
@@ -131,7 +143,13 @@ class FakeProvider:
     )
 
     async def complete(
-        self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
+        self,
+        *,
+        session_id: str,
+        system_prompt: str,
+        user_content: str,
+        max_tokens: int,
+        format: str | None = None,
     ) -> Completion:
         payload = json.loads(user_content)
         conversation = payload["conversation"]

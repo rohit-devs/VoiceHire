@@ -40,7 +40,7 @@ class ValidEvaluationProvider:
         self.user_contents: list[str] = []
         self.name = name
 
-    async def complete(self, *, session_id, system_prompt, user_content, max_tokens):
+    async def complete(self, *, session_id, system_prompt, user_content, max_tokens, format: str | None = None):
         self.calls += 1
         self.user_contents.append(user_content)
         if self.calls == 1 and self.first_response is not None:
@@ -90,6 +90,61 @@ class ValidEvaluationProvider:
             ],
         }
         if self.name == "ollama":
+            # Ollama split-call approach: return schema matching the call type.
+            task = payload.get("task", "")
+            if task.startswith("Score each rubric category"):
+                return Completion(
+                    json.dumps(
+                        {
+                            "category_scores": {
+                                name: {
+                                    "score": score,
+                                    "rationale": "The answer provides observable evidence for this criterion.",
+                                }
+                                for name, score in CATEGORY_SCORES.items()
+                            }
+                        }
+                    ),
+                    0,
+                    0,
+                    provider="ollama",
+                    model="llama3.2:1b",
+                )
+            if task.startswith("Write a one-sentence rationale"):
+                return Completion(
+                    json.dumps(
+                        {
+                            "question_rationale": {
+                                item["question_id"]: {
+                                    "rationale": "This exact excerpt supports the answer assessment."
+                                }
+                                for item in items
+                            }
+                        }
+                    ),
+                    0,
+                    0,
+                    provider="ollama",
+                    model="llama3.2:1b",
+                )
+            if task.startswith("List strengths, missing elements"):
+                return Completion(
+                    json.dumps(
+                        {
+                            "strengths": ["Described an implementation with a measured outcome."],
+                            "missing_elements": ["Testing and rollback trade-offs were not explained."],
+                            "improved_structure": [
+                                "State the problem and constraints.",
+                                "Explain the approach and trade-offs.",
+                                "Conclude with a measured result.",
+                            ],
+                        }
+                    ),
+                    0,
+                    0,
+                    provider="ollama",
+                    model="llama3.2:1b",
+                )
             return Completion(json.dumps(output), 0, 0, provider="ollama", model="llama3.2:1b")
         return Completion(json.dumps(output), 420, 310)
 
@@ -106,12 +161,13 @@ class InvalidEvaluationProvider:
 
 
 class FairnessRetryProvider(ValidEvaluationProvider):
-    async def complete(self, *, session_id, system_prompt, user_content, max_tokens):
+    async def complete(self, *, session_id, system_prompt, user_content, max_tokens, format: str | None = None):
         completion = await super().complete(
             session_id=session_id,
             system_prompt=system_prompt,
             user_content=user_content,
             max_tokens=max_tokens,
+            format=format,
         )
         if self.calls == 1:
             output = json.loads(completion.text)
@@ -1081,6 +1137,7 @@ class ScoredEvaluationProvider:
         system_prompt: str,
         user_content: str,
         max_tokens: int,
+        format: str | None = None,
     ) -> Completion:
         self.calls += 1
         decoder = json.JSONDecoder()
@@ -1179,6 +1236,55 @@ class ScoredEvaluationProvider:
                 for index in range(7)
             ],
         }
+        # Return the schema matching the call type (Ollama split-call approach).
+        task = payload.get("task", "")
+        if task.startswith("Score each rubric category"):
+            return Completion(
+                json.dumps(
+                    {
+                        "category_scores": {
+                            name: {
+                                "score": category_scores[name]["score"],
+                                "rationale": category_scores[name]["rationale"],
+                            }
+                            for name in categories
+                        }
+                    }
+                ),
+                100,
+                50,
+            )
+        if task.startswith("Write a one-sentence rationale"):
+            return Completion(
+                json.dumps(
+                    {
+                        "question_rationale": {
+                            item["question_id"]: {
+                                "rationale": "Assessed against the rubric."
+                            }
+                            for item in items
+                        }
+                    }
+                ),
+                100,
+                50,
+            )
+        if task.startswith("List strengths, missing elements"):
+            return Completion(
+                json.dumps(
+                    {
+                        "strengths": ["Clear communication."],
+                        "missing_elements": ["More specific examples needed."],
+                        "improved_structure": [
+                            "State the problem.",
+                            "Explain the approach.",
+                            "Share the outcome.",
+                        ],
+                    }
+                ),
+                100,
+                50,
+            )
         return Completion(json.dumps(output), 100, 50)
 
 

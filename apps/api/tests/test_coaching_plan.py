@@ -37,6 +37,7 @@ class ScoredEvaluationProvider:
         system_prompt: str,
         user_content: str,
         max_tokens: int,
+        format: str | None = None,
     ) -> Completion:
         self.calls += 1
         rubric = load_rubric()

@@ -35,6 +35,7 @@ class LegacyProviderAdapter:
         system_prompt: str,
         user_content: str,
         max_tokens: int,
+        format: str | None = None,
     ) -> ProviderCompletion:
         text = await self.provider.complete(
             [
@@ -43,6 +44,7 @@ class LegacyProviderAdapter:
             ],
             purpose=self.purpose,
             max_tokens=max_tokens,
+            format=format,
         )
         is_local = self.provider.name == "ollama"
         return ProviderCompletion(

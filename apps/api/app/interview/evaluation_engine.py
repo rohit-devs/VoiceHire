@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,39 @@ class EvaluationOutput(StrictModel):
 
 class EvaluationOutputError(ValueError):
     """The provider response is not safe or valid against the evaluation contract."""
+
+
+class OllamaCategoryScoreItem(StrictModel):
+    """Single rubric category score from Ollama (structured output)."""
+
+    score: StrictInt = Field(ge=0, le=5)
+    rationale: str = Field(min_length=1, max_length=300)
+
+
+class OllamaCategoryScores(StrictModel):
+    """Category scores for all rubric categories."""
+
+    category_scores: dict[str, OllamaCategoryScoreItem]
+
+
+class OllamaQuestionRationaleItem(StrictModel):
+    """Per-question rationale from Ollama."""
+
+    rationale: str = Field(min_length=1, max_length=500)
+
+
+class OllamaQuestionRationales(StrictModel):
+    """Per-question rationale keyed by question_id."""
+
+    question_rationale: dict[str, OllamaQuestionRationaleItem]
+
+
+class OllamaNarrative(StrictModel):
+    """Narrative fields: strengths, missing elements, improved structure."""
+
+    strengths: list[str] = Field(min_length=1, max_length=8)
+    missing_elements: list[str] = Field(min_length=1, max_length=12)
+    improved_structure: list[str] = Field(min_length=2, max_length=8)
 
 
 class OllamaCategoryScore(StrictModel):
@@ -265,118 +299,196 @@ async def _generate_ollama_evaluation(
     metrics: dict[str, Any],
     pairs: list[dict[str, str]],
 ) -> dict[str, Any]:
-    """Ollama-specific evaluation using a single simplified call.
+    """Ollama-specific evaluation using structured output, split into smaller calls.
 
-    Ollama's 1B model cannot produce the full EvaluationOutput schema
-    reliably. We ask for a simplified subset (overall score, category
-    scores, strengths, missing elements) and build the rest deterministically
-    from the transcript so a keyless demo still reaches a report.
+    Ollama's 1B model cannot produce the full EvaluationOutput schema reliably
+    in one call. We split into three smaller structured-output calls, each
+    constrained by a JSON schema via Ollama's ``format`` parameter, then merge
+    in code with deterministically derived fields (evidence quotes, weighted
+    score, practice exercises). Non-demo providers keep the full schema.
     """
     categories = list(rubric["categories"].keys())
+    question_by_id = {pair["question_id"]: pair["question"] for pair in pairs}
+    answer_by_question = {pair["question_id"]: pair["answer"] for pair in pairs}
+    start = time.monotonic()
 
-    items_summary = []
+    # ── Call 1: category scores ─────────────────────────────────────────
+    cat_items = []
     for pair in pairs:
-        items_summary.append(
+        cat_items.append(
             {
                 "question_id": pair["question_id"],
                 "question": pair["question"],
                 "candidate_answer": pair["answer"][:500],
             }
         )
-
-    user_content = json.dumps(
-        {
-            "task": "Score each rubric category 0-5 with a one-sentence rationale. "
-                    "List strengths and missing elements.",
-            "target_role": session.role,
-            "rubric_categories": categories,
-            "evaluation_items": items_summary,
-            "required_output_schema": OllamaEvaluation.model_json_schema(),
-        },
-        ensure_ascii=False,
-    )
-    system_prompt = (
-        "You are an interview evaluator. Score rubric categories 0-5 based on "
-        "the candidate's answers. Return only valid JSON matching the schema. "
+    cat_system = (
+        "You are an interview evaluator. Score each rubric category 0-5 based "
+        "on the candidate's answers. Return only valid JSON matching the schema. "
         "Do not include prohibited personal inferences (personality, gender, "
         "race, age, disability, health, religion, accent, etc.)."
     )
-
-    tokens_used = 0
-    last_error: Exception | None = None
-    output: OllamaEvaluation | None = None
+    cat_user = json.dumps(
+        {
+            "task": "Score each rubric category 0-5 with a one-sentence rationale.",
+            "target_role": session.role,
+            "rubric_categories": categories,
+            "evaluation_items": cat_items,
+            "required_output_schema": OllamaCategoryScores.model_json_schema(),
+        },
+        ensure_ascii=False,
+    )
+    cat_output: OllamaCategoryScores | None = None
     for attempt in range(2):
         try:
             completion = await provider.complete(
                 session_id=session_id,
-                system_prompt=system_prompt,
-                user_content=user_content,
-                max_tokens=800,
+                system_prompt=cat_system,
+                user_content=cat_user,
+                max_tokens=600,
             )
-            # Try the full schema first (some Ollama models can produce it),
-            # then fall back to the simplified 1B-friendly schema.
             try:
-                output = EvaluationOutput.model_validate_json(completion.text)
+                cat_output = OllamaCategoryScores.model_validate_json(completion.text)
+                break
             except (ValidationError, ValueError):
-                output = OllamaEvaluation.model_validate_json(completion.text)
-            tokens_used += completion.prompt_tokens + completion.completion_tokens
-            break
-        except (ValidationError, ValueError) as exc:
-            last_error = exc
+                if attempt == 0:
+                    cat_user += "\n\nReturn only valid JSON matching the schema. No prose."
+                    continue
+                break
+        except (ValidationError, ValueError):
             if attempt == 0:
-                user_content += (
-                    "\n\nReturn only valid JSON matching the schema. No prose."
-                )
+                cat_user += "\n\nReturn only valid JSON matching the schema. No prose."
                 continue
             break
 
-    if output is None:
+    if cat_output is None:
+        elapsed = time.monotonic() - start
         return {
             "status": "failed",
             "rubric_version": rubric["version"],
             "measured_metrics": metrics,
             "ai_assessments": None,
-            "error": str(
-                last_error or "Ollama evaluation output could not be validated."
-            ),
-            "tokens_used": tokens_used,
+            "error": "Ollama category scores could not be validated.",
+            "tokens_used": 0,
+            "ollama_elapsed_seconds": round(elapsed, 2),
         }
 
-    # If we got the full EvaluationOutput, return it directly.
-    if isinstance(output, EvaluationOutput):
+    # ── Call 2: per-question rationale ──────────────────────────────────
+    qr_system = (
+        "You are an interview evaluator. For each question-answer pair, write "
+        "a one-sentence rationale for the answer quality. Return only valid "
+        "JSON matching the schema."
+    )
+    qr_user = json.dumps(
+        {
+            "task": "Write a one-sentence rationale per answered question.",
+            "target_role": session.role,
+            "evaluation_items": cat_items,
+            "required_output_schema": OllamaQuestionRationales.model_json_schema(),
+        },
+        ensure_ascii=False,
+    )
+    qr_output: OllamaQuestionRationales | None = None
+    for attempt in range(2):
+        try:
+            completion = await provider.complete(
+                session_id=session_id,
+                system_prompt=qr_system,
+                user_content=qr_user,
+                max_tokens=600,
+            )
+            try:
+                qr_output = OllamaQuestionRationales.model_validate_json(
+                    completion.text
+                )
+                break
+            except (ValidationError, ValueError):
+                if attempt == 0:
+                    qr_user += "\n\nReturn only valid JSON matching the schema. No prose."
+                    continue
+                break
+        except (ValidationError, ValueError):
+            if attempt == 0:
+                qr_user += "\n\nReturn only valid JSON matching the schema. No prose."
+                continue
+            break
+
+    # ── Call 3: narrative fields ────────────────────────────────────────
+    nar_system = (
+        "You are an interview evaluator. List strengths, missing elements, "
+        "and improved answer structure. Return only valid JSON matching the "
+        "schema. Do not include prohibited personal inferences."
+    )
+    nar_user = json.dumps(
+        {
+            "task": "List strengths, missing elements, and improved answer structure.",
+            "target_role": session.role,
+            "rubric_categories": categories,
+            "evaluation_items": cat_items,
+            "required_output_schema": OllamaNarrative.model_json_schema(),
+        },
+        ensure_ascii=False,
+    )
+    nar_output: OllamaNarrative | None = None
+    for attempt in range(2):
+        try:
+            completion = await provider.complete(
+                session_id=session_id,
+                system_prompt=nar_system,
+                user_content=nar_user,
+                max_tokens=600,
+            )
+            try:
+                nar_output = OllamaNarrative.model_validate_json(completion.text)
+                break
+            except (ValidationError, ValueError):
+                if attempt == 0:
+                    nar_user += "\n\nReturn only valid JSON matching the schema. No prose."
+                    continue
+                break
+        except (ValidationError, ValueError):
+            if attempt == 0:
+                nar_user += "\n\nReturn only valid JSON matching the schema. No prose."
+                continue
+            break
+
+    if qr_output is None or nar_output is None:
+        elapsed = time.monotonic() - start
         return {
-            "status": "completed",
+            "status": "failed",
             "rubric_version": rubric["version"],
             "measured_metrics": metrics,
-            "ai_assessments": output.model_dump(mode="json"),
-            "provider": "ollama",
-            "model": getattr(provider, "model", "ollama"),
-            "error": None,
-            "tokens_used": tokens_used,
+            "ai_assessments": None,
+            "error": "Ollama per-question or narrative output could not be validated.",
+            "tokens_used": 0,
+            "ollama_elapsed_seconds": round(elapsed, 2),
         }
 
-    # Otherwise, build the full output from the simplified Ollama result.
-    categories = list(rubric["categories"].keys())
-
+    # ── Merge: build per_question_analysis deterministically ────────────
+    per_question = []
     for pair in pairs:
-        answer = pair["answer"]
+        qid = pair["question_id"]
+        answer = answer_by_question[qid]
         evidence = answer[:50] if answer else "No answer provided."
+        q_rationale = qr_output.question_rationale.get(qid)
+        q_rationale_text = q_rationale.rationale if q_rationale else "Heuristic assessment based on the candidate's answer."
         per_question.append(
             {
-                "question_id": pair["question_id"],
-                "question": question_by_id[pair["question_id"]],
+                "question_id": qid,
+                "question": question_by_id[qid],
                 "evidence_quote": evidence,
-                "rationale": "Heuristic assessment based on the candidate's answer.",
+                "rationale": q_rationale_text,
                 "category_scores": {
-                    name: output.category_scores[name].score for name in categories
+                    name: cat_output.category_scores[name].score
+                    for name in categories
                 },
             }
         )
 
-    # Top-level category scores.
+    # ── Top-level category scores ───────────────────────────────────────
     category_scores: dict[str, dict[str, Any]] = {}
     for name in categories:
-        assessment = output.category_scores[name]
+        assessment = cat_output.category_scores[name]
         category_scores[name] = {
             "score": assessment.score,
             "rationale": assessment.rationale,
@@ -384,7 +496,8 @@ async def _generate_ollama_evaluation(
 
     # Weighted overall score must match the rubric.
     weighted = sum(
-        category_scores[name]["score"] * rubric["weights"][name] for name in categories
+        category_scores[name]["score"] * rubric["weights"][name]
+        for name in categories
     )
     overall_score = round(weighted, 2)
 
@@ -393,8 +506,8 @@ async def _generate_ollama_evaluation(
         categories, key=lambda n: category_scores[n]["score"]
     )[:3]
 
-    strengths = list(output.strengths[:8])
-    missing_elements = list(output.missing_elements[:12])
+    strengths = list(nar_output.strengths[:8])
+    missing_elements = list(nar_output.missing_elements[:12])
 
     improved_structure = [
         "State the problem and constraints.",
@@ -450,6 +563,7 @@ async def _generate_ollama_evaluation(
         ],
     )
 
+    elapsed = time.monotonic() - start
     return {
         "status": "completed",
         "rubric_version": rubric["version"],
@@ -458,7 +572,8 @@ async def _generate_ollama_evaluation(
         "provider": "ollama",
         "model": getattr(provider, "model", "ollama"),
         "error": None,
-        "tokens_used": tokens_used,
+        "tokens_used": 0,
+        "ollama_elapsed_seconds": round(elapsed, 2),
     }
 
 

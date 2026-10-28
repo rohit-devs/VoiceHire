@@ -58,7 +58,13 @@ async def test_prompt_injection_is_only_user_content_and_fake_provider_generates
             self.user_content = ""
 
         async def complete(
-            self, *, session_id: str, system_prompt: str, user_content: str, max_tokens: int
+            self,
+            *,
+            session_id: str,
+            system_prompt: str,
+            user_content: str,
+            max_tokens: int,
+            format: str | None = None,
         ) -> Completion:
             self.system_prompt = system_prompt
             self.user_content = user_content
@@ -67,6 +73,7 @@ async def test_prompt_injection_is_only_user_content_and_fake_provider_generates
                 system_prompt=system_prompt,
                 user_content=user_content,
                 max_tokens=max_tokens,
+                format=format,
             )
 
     provider = CapturingProvider()

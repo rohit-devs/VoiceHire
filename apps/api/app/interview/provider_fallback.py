@@ -93,6 +93,7 @@ class FallbackProvider:
         *,
         purpose: str = "live",
         max_tokens: int,
+        format: str | None = None,
     ) -> str:
         provider = await self._resolve()
         if provider is None:
@@ -104,6 +105,7 @@ class FallbackProvider:
                 messages,
                 purpose=purpose,
                 max_tokens=max_tokens,
+                format=format,
             )
         except LLMUnavailable:
             # If the resolved provider becomes unavailable, try the next one.
@@ -116,6 +118,7 @@ class FallbackProvider:
                 messages,
                 purpose=purpose,
                 max_tokens=max_tokens,
+                format=format,
             )
             return Completion(
                 text=text,

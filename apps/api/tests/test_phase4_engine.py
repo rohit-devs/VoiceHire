@@ -41,6 +41,7 @@ class FakeProviderForTests(LLMProvider):
         system_prompt: str,
         user_content: str,
         max_tokens: int,
+        format: str | None = None,
     ) -> Completion:
         self.call_count += 1
         if self.fail:
