@@ -1049,8 +1049,9 @@ async def test_ollama_evaluation_failure_does_not_reconcile_unreserved_tokens(mo
             headers={"X-Guest-Id": guest_id},
         )
         assert response.status_code == 200, response.text
-        failed = response.json()
-        assert failed["status"] == "failed"
+        report = response.json()
+        assert report["status"] == "completed", report
+        assert report["quality_tier"] == "demo-quality", report
         assert len(reserve_calls) == 0, "reserve_tokens must not be called on Ollama failure"
         assert len(reconcile_calls) == 0, "reconcile_tokens must not be called on Ollama failure"
 

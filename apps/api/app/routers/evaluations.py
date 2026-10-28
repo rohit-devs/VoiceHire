@@ -251,6 +251,7 @@ def _report_payload(report: EvaluationReport) -> dict[str, Any]:
         ) if report.ai_assessments is not None else None,
         "provider": assessments.get("_provider"),
         "model": assessments.get("_model"),
+        "quality_tier": assessments.get("_quality_tier"),
         "error": report.error,
         "guidance_note": guidance,
         "created_at": report.created_at.isoformat() if report.created_at else None,
