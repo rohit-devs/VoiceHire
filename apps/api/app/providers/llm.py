@@ -205,6 +205,12 @@ class OllamaProvider:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                # Reduce context window to limit memory on constrained (8 GB) machines.
+                # llama3.2:1b defaults to 131072 tokens; 2048 is sufficient for
+                # interview Q&A and evaluation payloads.
+                "num_ctx": 2048,
+                # Keep the model loaded between calls to avoid reload overhead.
+                "keep_alive": "5m",
             },
         }
         if format is not None:
