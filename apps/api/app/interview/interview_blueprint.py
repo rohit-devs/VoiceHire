@@ -250,9 +250,14 @@ class BlueprintBuilder:
                 interview_type=interview_type,
             )
 
+            fit_str = (
+                f"{blueprint.overall_fit_score:.0%}"
+                if blueprint.overall_fit_score is not None
+                else "N/A"
+            )
             logger.info(
                 f"✅ Built interview blueprint for {candidate_name} "
-                f"(fit={blueprint.overall_fit_score:.0%}, difficulty={difficulty_level})"
+                f"(fit={fit_str}, difficulty={difficulty_level})"
             )
 
             return blueprint
