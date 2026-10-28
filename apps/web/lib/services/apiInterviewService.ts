@@ -15,6 +15,7 @@ import type {
   PerformanceHistory,
 } from "@/types";
 import { getOrCreateGuestId, GUEST_ID_HEADER } from "@/lib/guest";
+import { uuid } from "@/lib/uuid";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -150,7 +151,7 @@ class ApiInterviewService implements InterviewService {
     jobCategory?: string;
     isDemo?: boolean;
   }): Promise<InterviewConfig> {
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = uuid();
     const response = await this.request<{
       id: string;
       role: string;
@@ -264,7 +265,7 @@ class ApiInterviewService implements InterviewService {
       language?: "en" | "es" | "fr";
     } = {},
   ): Promise<TranscriptAck> {
-    const idempotencyKey = `session.transcript:${id}:${metadata.messageId ?? crypto.randomUUID()}`;
+    const idempotencyKey = `session.transcript:${id}:${metadata.messageId ?? uuid()}`;
     return this.request<TranscriptAck>(`/api/interviews/sessions/${id}/transcript`, {
       method: "POST",
       body: JSON.stringify({

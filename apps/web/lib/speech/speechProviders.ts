@@ -1,4 +1,5 @@
 import { apiInterviewService } from "@/lib/services/apiInterviewService";
+import { uuid } from "@/lib/uuid";
 
 // ── Interview turn state machine ─────────────────────────────────────────
 export type InterviewTurnState =
@@ -124,7 +125,7 @@ type SpeechWindow = Window & {
 };
 
 function createMessageId(): string {
-  return crypto.randomUUID();
+  return uuid();
 }
 
 export class BrowserSpeechRecognitionProvider implements STTProvider {
