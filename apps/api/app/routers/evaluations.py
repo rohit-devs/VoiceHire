@@ -793,7 +793,11 @@ async def get_coaching_plan(
         select(EvaluationReport).where(EvaluationReport.session_id == session_id)
     )
     if report is None:
-        raise HTTPException(status_code=404, detail="Coaching plan not found")
+        return {
+            "status": "not_available",
+            "message": "Evaluation report not generated yet. Complete the interview and generate a report first.",
+            "interview_id": session_id,
+        }
     plan = await db.scalar(
         select(CoachingPlan).where(
             CoachingPlan.evaluation_report_id == report.id,
@@ -801,8 +805,13 @@ async def get_coaching_plan(
         )
     )
     if plan is None:
-        raise HTTPException(status_code=404, detail="Coaching plan not found")
+        return {
+            "status": "not_available",
+            "message": "Coaching plan not generated yet.",
+            "interview_id": session_id,
+        }
     return {
+        "status": "available",
         "id": plan.id,
         "interview_id": session_id,
         **plan.plan_data,
