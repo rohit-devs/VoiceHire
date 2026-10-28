@@ -234,21 +234,14 @@ class PromptChainCoordinator:
             # trigger regeneration instead of treating the prompt as a question.
             return None
         except json.JSONDecodeError:
-            # Not pure JSON. Try to extract a JSON object wrapped in prose.
-            extracted = self._extract_json_from_prose(text)
-            if extracted is not None:
-                try:
-                    data = json.loads(extracted)
-                    payload = GeneratedQuestionPayload.model_validate(data)
-                    question = payload.question_text.strip()
-                    reasoning = payload.reasoning.strip()
-                except (ValidationError, json.JSONDecodeError):
-                    # Prose contains invalid or wrong-schema JSON. Reject.
-                    return None
-            else:
-                # No JSON found — fall back to plain text from legacy providers.
-                question = text.strip().strip('"')
-                reasoning = None
+            # Not pure JSON. If the text contains a JSON object or schema keys
+            # (even wrapped in prose), reject it entirely — do not extract
+            # and validate embedded JSON. Only plain text from legacy
+            # providers is accepted as a fallback.
+            if "{" in text or self._contains_schema_keys(text):
+                return None
+            question = text.strip().strip('"')
+            reasoning = None
 
         if not question:
             return None
@@ -272,6 +265,18 @@ class PromptChainCoordinator:
                 question = question.rstrip(".,!") + "?"
 
         return question or None, reasoning or ""
+
+    @staticmethod
+    def _contains_schema_keys(text: str) -> bool:
+        """Return True if the text contains question/evaluation schema keys.
+
+        Any output containing these keys — even wrapped in prose — is
+        rejected so the caller regenerates instead of accepting embedded
+        JSON as a question.
+        """
+        keys = ("task", "format", "schema", "question_text", "reasoning")
+        lower = text.lower()
+        return any(f'"{k}"' in lower for k in keys)
 
     @staticmethod
     def _similarity(a: str, b: str) -> float:
@@ -320,39 +325,3 @@ class PromptChainCoordinator:
     @staticmethod
     def _normalize(text: str) -> str:
         return " ".join("".join(char.lower() if char.isalnum() else " " for char in text).split())
-
-    @staticmethod
-    def _extract_json_from_prose(text: str) -> Optional[str]:
-        """Extract the first JSON object found within prose text.
-
-        Uses a brace-matching scan to handle nested objects. Returns the
-        extracted JSON string, or None if no complete JSON object is found.
-        """
-        start = text.find("{")
-        if start == -1:
-            return None
-        depth = 0
-        in_string = False
-        escape = False
-        for i in range(start, len(text)):
-            char = text[i]
-            if escape:
-                escape = False
-                continue
-            if char == "\\":
-                escape = True
-                continue
-            if in_string:
-                if char == '"':
-                    in_string = False
-                continue
-            if char == '"':
-                in_string = True
-                continue
-            if char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start : i + 1]
-        return None

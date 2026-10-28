@@ -93,3 +93,37 @@ async def test_followup_generation_real_chain_succeeds_with_ollama(
     assert result.reasoning == "Follow-up question based on your answer."
     assert result.difficulty_level == 2
     assert result.degraded is False
+
+
+def _parse(text: str) -> object:
+    """Call _parse_llm_output directly without initializing the YAML prompt."""
+    coordinator = PromptChainCoordinator.__new__(PromptChainCoordinator)
+    return coordinator._parse_llm_output(text, set())
+
+
+@pytest.mark.asyncio
+async def test_parse_llm_output_rejects_json_wrapped_in_prose():
+    """JSON embedded in prose must be rejected, not extracted and validated."""
+    result = _parse(
+        'Here\'s a clear question for the candidate: {"task": "...", "format": "json", "schema": {...}}'
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_parse_llm_output_rejects_prose_containing_schema_keys():
+    """Prose containing schema keywords must be rejected even without braces."""
+    result = _parse(
+        'Here is your question: the "task" is to ask about experience, "format" is open, "schema" is flexible.'
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_parse_llm_output_accepts_plain_text_question():
+    """Plain text without JSON or schema keys is accepted as a fallback."""
+    result = _parse("Can you share a specific example from your experience?")
+    assert result is not None
+    question, reasoning = result
+    assert question == "Can you share a specific example from your experience?"
+    assert reasoning == ""

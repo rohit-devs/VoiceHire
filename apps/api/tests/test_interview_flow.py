@@ -182,7 +182,7 @@ async def test_parse_llm_output_accepts_plain_text_question():
 
 @pytest.mark.asyncio
 async def test_parse_llm_output_extracts_json_from_prose():
-    """JSON wrapped in prose must be extracted; the prose wrapper is rejected."""
+    """JSON wrapped in prose must be rejected, not extracted and validated."""
     coordinator = PromptChainCoordinator(FakeProvider())
     prose_wrapped = (
         'Here is the generated question in JSON format: '
@@ -191,10 +191,7 @@ async def test_parse_llm_output_extracts_json_from_prose():
         '"difficulty_level": 2}'
     )
     result = coordinator._parse_llm_output(prose_wrapped, set())
-    assert result is not None, f"Prose-wrapped JSON should be extracted, got: {result}"
-    question, reasoning = result
-    assert question == "Can you describe a distributed system you designed?"
-    assert reasoning == "Follow-up on distributed systems experience."
+    assert result is None, f"Prose-wrapped JSON should be rejected, got: {result}"
 
 
 @pytest.mark.asyncio
