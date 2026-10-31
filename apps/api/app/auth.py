@@ -21,7 +21,7 @@ from typing import Optional
 from fastapi import Request, HTTPException, Depends, status, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -67,6 +67,11 @@ async def _upsert_guest_user(guest_id: str, db: AsyncSession) -> dict:
             )
             db.add(user)
         await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        user = await db.scalar(select(User).where(User.guest_id == guest_id))
+        if user is None:
+            raise
     except SQLAlchemyError as exc:
         await db.rollback()
         logger.exception("Failed to upsert guest user %s", guest_id)
