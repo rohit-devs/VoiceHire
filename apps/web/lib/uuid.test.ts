@@ -1,3 +1,9 @@
+interface GlobalWithCrypto {
+  crypto?: {
+    randomUUID?: () => string;
+  };
+}
+
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { uuid } from "./uuid";
 
@@ -5,14 +11,17 @@ describe("uuid()", () => {
   let originalRandomUUID: (() => string) | undefined;
 
   beforeEach(() => {
-    originalRandomUUID = (globalThis as any).crypto?.randomUUID;
+    originalRandomUUID = (globalThis as GlobalWithCrypto).crypto?.randomUUID;
   });
 
   afterEach(() => {
+    const global = globalThis as GlobalWithCrypto;
     if (originalRandomUUID === undefined) {
-      delete (globalThis as any).crypto.randomUUID;
-    } else {
-      (globalThis as any).crypto.randomUUID = originalRandomUUID;
+      if (global.crypto) {
+        delete global.crypto.randomUUID;
+      }
+    } else if (global.crypto) {
+      global.crypto.randomUUID = originalRandomUUID;
     }
   });
 
